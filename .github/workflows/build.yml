@@ -36,6 +36,8 @@ jobs:
         working-directory: apps/ios
     steps:
       - uses: actions/checkout@v4
+      - name: Test native queue
+        run: bash ../../scripts/test-native.sh
       - name: Tool versions
         run: |
           xcodebuild -version
@@ -50,6 +52,8 @@ jobs:
           mkdir -p ../../build
           xcodebuild -project PhoneMic.xcodeproj -scheme PhoneMic -configuration Debug -destination 'generic/platform=iOS Simulator' -derivedDataPath ../../build/simulator -resultBundlePath ../../build/simulator.xcresult CODE_SIGNING_ALLOWED=NO build 2>&1 | tee ../../build/ios-simulator.log
           xcodebuild -project PhoneMic.xcodeproj -scheme PhoneMic -configuration Debug -destination 'generic/platform=iOS' -derivedDataPath ../../build/device -resultBundlePath ../../build/device.xcresult CODE_SIGNING_ALLOWED=NO build 2>&1 | tee ../../build/ios-device.log
+      - name: Test synthetic recording
+        run: bash ../../scripts/test-ios.sh
       - uses: actions/upload-artifact@v4
         if: always()
         with:

@@ -9,16 +9,32 @@ settings:
     PRODUCT_BUNDLE_IDENTIFIER: org.example.phonemic
     MARKETING_VERSION: "0.1.0"
     CURRENT_PROJECT_VERSION: "1"
+    SWIFT_OBJC_BRIDGING_HEADER: Native/PhoneMic-Bridging-Header.h
+    CLANG_C_LANGUAGE_STANDARD: c11
     TARGETED_DEVICE_FAMILY: "1"
 targets:
   PhoneMic:
     type: application
     platform: iOS
-    sources: [Sources]
+    sources: [Sources, Native]
     info:
       path: Generated/Info.plist
       properties:
         CFBundleDisplayName: $(PRODUCT_DISPLAY_NAME)
+        NSMicrophoneUsageDescription: Record your microphone to a local test WAV file.
+        UIFileSharingEnabled: true
+        LSSupportsOpeningDocumentsInPlace: true
         UILaunchScreen: {}
         UISupportedInterfaceOrientations: [UIInterfaceOrientationPortrait]
-    scheme: {}
+    scheme:
+      testTargets: [PhoneMicTests]
+  PhoneMicTests:
+    type: bundle.unit-test
+    platform: iOS
+    sources: [Tests]
+    dependencies:
+      - target: PhoneMic
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: org.example.phonemic.tests
+        GENERATE_INFOPLIST_FILE: YES

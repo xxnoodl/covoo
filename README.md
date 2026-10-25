@@ -1,7 +1,7 @@
 # PhoneMic
 
-iPhone mic for Windows and DAWs. Early development, M0 only.
-Capture and streaming aren't implemented yet.
+iPhone mic for Windows and DAWs. M1 adds local iPhone test recordings.
+Device validation is pending. Streaming isn't implemented yet.
 
 Run the Windows checks:
 
