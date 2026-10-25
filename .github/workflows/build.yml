@@ -54,6 +54,14 @@ jobs:
           xcodebuild -project PhoneMic.xcodeproj -scheme PhoneMic -configuration Debug -destination 'generic/platform=iOS' -derivedDataPath ../../build/device -resultBundlePath ../../build/device.xcresult CODE_SIGNING_ALLOWED=NO build 2>&1 | tee ../../build/ios-device.log
       - name: Test synthetic recording
         run: bash ../../scripts/test-ios.sh
+      - name: Package for local signing
+        run: bash ../../scripts/package-ios.sh
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ios-sideload-package
+          path: build/PhoneMic-unsigned.ipa
+          if-no-files-found: error
+          retention-days: 7
       - uses: actions/upload-artifact@v4
         if: always()
         with:

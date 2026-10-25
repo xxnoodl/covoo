@@ -9,8 +9,9 @@ installation or microphone operation. Hosted macOS CI has no access to the
 developer's iPhone and provides no interactive physical-device debugging.
 
 The repository is connected to `xxnoodl/covoo`; unsigned iOS CI has passed.
-No signing or device setup is needed for M0. The steps below are for later
-installation on your phone, not immediate tasks.
+For the current Windows/regular-account setup, start with
+[Windows installation](windows-install.md). The Xcode/paid-team alternatives below
+remain available but aren't prerequisites for that experimental test route.
 
 ## Signing choices
 
@@ -69,8 +70,9 @@ Record OS/device/build versions, launch result, visible M0 state and any errors.
 M1 requests microphone permission only after Record microphone is tapped. Use
 the [M1 checklist](m1-device.md) for capture testing. Do not mark installation
 complete until this is performed.
-Windows-only IPA sideload/debug tooling is not validated or required by this
-project. If Mac/device access is unavailable, physical acceptance remains blocked.
+Windows sideloading is an experimental alternative documented separately.
+Neither route has been physically validated yet. Live Xcode debugging still
+needs a supported Mac/device connection.
 
 Use Xcode's attached-device console/Console.app for logs. Retrieve device crash
 reports through Devices and Simulators; retain matching archive/dSYMs and build

@@ -1,7 +1,7 @@
 # M1 device check
 
 Requires an iPhone 14 with iOS 17+ and a signed installed build. See
-[installation](ios-deployment.md) if that isn't set up. Unsigned CI builds can't
+[Windows installation](windows-install.md) if that isn't set up. Unsigned CI builds can't
 be installed as-is. Signing and device access are still unverified.
 
 1. Open the app, tap Record microphone and allow access. Check the input name,
