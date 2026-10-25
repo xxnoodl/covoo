@@ -331,6 +331,7 @@ final class CaptureService {
             } catch { events.append("WAV reopen failed: \(error.localizedDescription)") }
         }
         if !validWAV, state.frames > 0 { state.status = "Recording file validation failed. See report." }
+        let renderedFrames = finalStats?.rendered_frames ?? 0
         if let reportURL {
             let report: [String: Any] = ["sample_rate_hz": state.sampleRate,
                 "actual_io_buffer_ms": state.bufferMS, "actual_input_channels": state.hardwareChannels,
@@ -339,6 +340,11 @@ final class CaptureService {
                 "frames_written": state.frames, "duration_from_written_frames_seconds": state.sampleRate > 0 ? Double(state.frames) / state.sampleRate : 0,
                 "wall_duration_seconds": startedAt.map { Date().timeIntervalSince($0) } ?? 0,
                 "callbacks": state.callbacks, "render_errors": state.renderErrors,
+                "rendered_frames": renderedFrames,
+                "unwritten_rendered_frames": renderedFrames > state.frames ? renderedFrames - state.frames : 0,
+                "queue_blocks_at_stop": state.queueBlocks,
+                "dropped_blocks": finalStats?.queue.dropped_blocks ?? 0,
+                "oversized_callbacks": finalStats?.oversized_callbacks ?? 0,
                 "last_render_status": finalStats?.last_status ?? 0,
                 "dropped_frames": state.droppedFrames, "queue_high_water_blocks": state.highWater,
                 "discontinuities": state.discontinuities, "max_successful_callback_ms": state.maxCallbackMS,

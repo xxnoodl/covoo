@@ -30,3 +30,13 @@ xcodebuild -project PhoneMic.xcodeproj -scheme PhoneMic -configuration Debug \
 The generated project is ignored. Product name and bundle ID are in project.yml.
 CI records Xcode and XcodeGen versions and uploads build artifacts and logs.
 Unsigned iOS artifacts can't establish physical installation.
+
+After generating the project, run the native queue and simulator recording tests
+from the repository root:
+
+```sh
+bash scripts/test-native.sh
+bash scripts/test-ios.sh
+```
+
+The simulator test uses synthetic PCM and does not validate the microphone.

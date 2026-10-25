@@ -66,8 +66,9 @@ CI-exported development IPA, use Xcode Devices and Simulators to install it on
 the registered device. An unsigned .app or IPA is not a substitute.
 
 Record OS/device/build versions, launch result, visible M0 state and any errors.
-M0 must show inactive capture/transport and no measured latency; no permission
-prompt is expected. Do not mark installation complete until this is performed.
+M1 requests microphone permission only after Record microphone is tapped. Use
+the [M1 checklist](m1-device.md) for capture testing. Do not mark installation
+complete until this is performed.
 Windows-only IPA sideload/debug tooling is not validated or required by this
 project. If Mac/device access is unavailable, physical acceptance remains blocked.
 
@@ -77,7 +78,7 @@ ID for symbolication. On the phone, Analytics Data in Privacy & Security can
 provide shareable crash reports. Redact identifiers before sharing. A remote
 Mac can inspect exported logs/crashes; live capture and debugging still require
 a supported device connection. CI .xcresult bundles diagnose build failures,
-not microphone performance. M1 will add capture diagnostics and a test recording.
+not microphone performance. M1 exports capture diagnostics and a test recording.
 
 ## Official sources (checked 2026-10-25)
 
