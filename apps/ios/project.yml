@@ -25,6 +25,7 @@ targets:
         UIFileSharingEnabled: true
         LSSupportsOpeningDocumentsInPlace: true
         UILaunchScreen: {}
+        UIRequiresFullScreen: true
         UISupportedInterfaceOrientations: [UIInterfaceOrientationPortrait]
     scheme:
       testTargets: [PhoneMicTests]

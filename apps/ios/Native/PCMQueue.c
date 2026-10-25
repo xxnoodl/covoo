@@ -13,6 +13,12 @@ struct PMQueue {
     PMSlot slots[PM_QUEUE_SLOTS];
 };
 
+static bool queue_atomics_are_lock_free(PMQueue *q) {
+    return atomic_is_lock_free(&q->write_index) && atomic_is_lock_free(&q->read_index)
+        && atomic_is_lock_free(&q->dropped_blocks) && atomic_is_lock_free(&q->dropped_frames)
+        && atomic_is_lock_free(&q->high_water);
+}
+
 PMQueue *pm_queue_create(void) {
     PMQueue *q = calloc(1, sizeof(*q));
     if (!q) return NULL;
@@ -21,9 +27,7 @@ PMQueue *pm_queue_create(void) {
     atomic_init(&q->dropped_blocks, 0);
     atomic_init(&q->dropped_frames, 0);
     atomic_init(&q->high_water, 0);
-    if (!atomic_is_lock_free(&q->write_index) || !atomic_is_lock_free(&q->read_index)
-        || !atomic_is_lock_free(&q->dropped_blocks) || !atomic_is_lock_free(&q->dropped_frames)
-        || !atomic_is_lock_free(&q->high_water)) {
+    if (!queue_atomics_are_lock_free(q)) {
         free(q);
         return NULL;
     }
