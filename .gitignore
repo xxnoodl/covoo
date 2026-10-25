@@ -1,0 +1,10 @@
+/target/
+/.tools/
+/build/
+*.xcresult/
+*.xcodeproj/
+*.xcworkspace/
+*.p12
+*.mobileprovision
+*.ipa
+.DS_Store

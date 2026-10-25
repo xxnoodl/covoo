@@ -1,0 +1,28 @@
+name: iOS development build (manual)
+on:
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  signed-ios:
+    timeout-minutes: 30
+    runs-on: macos-15
+    environment: ios-development
+    steps:
+      - uses: actions/checkout@v4
+      - run: brew install xcodegen
+      - name: Sign and export for registered devices
+        shell: bash
+        env:
+          IOS_CERTIFICATE_BASE64: ${{ secrets.IOS_CERTIFICATE_BASE64 }}
+          IOS_CERTIFICATE_PASSWORD: ${{ secrets.IOS_CERTIFICATE_PASSWORD }}
+          IOS_PROFILE_BASE64: ${{ secrets.IOS_PROFILE_BASE64 }}
+          IOS_TEAM_ID: ${{ vars.IOS_TEAM_ID }}
+          IOS_BUNDLE_ID: ${{ vars.IOS_BUNDLE_ID }}
+        run: bash scripts/build-ios-signed.sh
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ios-development-signed
+          path: build/signed/*.ipa
+          if-no-files-found: error
+          retention-days: 3
