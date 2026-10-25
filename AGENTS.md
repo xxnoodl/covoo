@@ -11,3 +11,6 @@ No automatic drivers, system security changes, Android, ASIO or streaming in M0.
 Run cargo fmt --all -- --check, cargo clippy --workspace --all-targets -- -D warnings,
 cargo test --workspace --locked, and cargo build --workspace --locked.
 Keep diagnostics truthful and document blockers in docs/milestones.
+
+Keep the README, commit messages and updates short. Use plain wording and normal
+punctuation. Put detailed setup and milestone reports in docs.

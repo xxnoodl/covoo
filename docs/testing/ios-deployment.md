@@ -8,10 +8,9 @@ in build.yml disable signing and need no Apple credentials. Neither proves
 installation or microphone operation. Hosted macOS CI has no access to the
 developer's iPhone and provides no interactive physical-device debugging.
 
-No remote is configured in this repository at initial inspection. Create/select
-a GitHub repository, configure its remote and push the files to run Actions.
-Review runner usage/availability on your account. Save the first successful
-Xcode/XcodeGen version logs; pin those versions before treating builds as releases.
+The repository is connected to `xxnoodl/covoo`; unsigned iOS CI has passed.
+No signing or device setup is needed for M0. The steps below are for later
+installation on your phone, not immediate tasks.
 
 ## Signing choices
 
