@@ -14,6 +14,9 @@ fn main() {
 }
 fn run() -> io::Result<()> {
     let args: Vec<_> = std::env::args().skip(1).collect();
+    if args.iter().any(|a| a == "--list-audio") {
+        return windows_receiver::live::list_devices();
+    }
     if args.iter().any(|a| a == "--self-test") {
         return windows_receiver::synthetic::smoke();
     }
@@ -24,7 +27,10 @@ fn run() -> io::Result<()> {
         );
         println!("Or: windows-receiver --self-test");
         println!(
-            "M2 receives encrypted LAN audio to WAV. No Windows microphone endpoint or measured end-to-end latency."
+            "Or: --list-audio. Add --audio-device EXACT_NAME [--buffer-ms 40] to --serve for M3 Stage A routing."
+        );
+        println!(
+            "Encrypted LAN audio to WAV, with optional existing Windows endpoint routing. No native covoo microphone or measured end-to-end latency."
         );
         return Ok(());
     }
@@ -58,7 +64,25 @@ fn run() -> io::Result<()> {
     if seconds == 0 || seconds > 86400 {
         return Err(io::Error::other("--seconds must be 1..86400"));
     }
-    let server = Server::bind(SocketAddr::from((host, port)), output)?;
+    let mut server = Server::bind(SocketAddr::from((host, port)), output)?;
+    if let Some(device) = value(&args, "--audio-device")? {
+        if !cfg!(windows) {
+            return Err(io::Error::other("Audio routing requires Windows"));
+        }
+        let buffer_ms = value(&args, "--buffer-ms")?
+            .unwrap_or("40")
+            .parse::<u32>()
+            .map_err(io::Error::other)?;
+        if !(20..=100).contains(&buffer_ms) {
+            return Err(io::Error::other("--buffer-ms must be 20..100"));
+        }
+        server = server.with_route(windows_receiver::live::RouteOptions {
+            device: device.into(),
+            buffer_ms,
+        });
+    } else if value(&args, "--buffer-ms")?.is_some() {
+        return Err(io::Error::other("--buffer-ms requires --audio-device"));
+    }
     let page = server.pairing_page(&host.to_string())?;
     let name = std::env::var("COVOO_PRODUCT_NAME")
         .or_else(|_| std::env::var("PHONEMIC_PRODUCT_NAME"))

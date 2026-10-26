@@ -51,4 +51,5 @@ Restarting the receiver changes its certificate/token and requires a fresh QR.
 Current pairing isn't persisted across app restart. Receiver exits after one hour
 by default; use `--seconds 7200` if a longer explicit test is wanted.
 
-No M3 work starts until these physical acceptance results are confirmed.
+User authorized M3 Stage A after reviewing the protected audio evidence.
+Longer uninterrupted and reconnect checks remain open reliability items.

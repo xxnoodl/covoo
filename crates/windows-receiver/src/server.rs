@@ -1,3 +1,4 @@
+use crate::live::{LiveSession, RouteOptions};
 use crate::recording::{AudioPacket, Metrics, Recorder, record_worker};
 use audio_transport::{
     control::{Message, PACKET_FRAMES, read_message, write_message},
@@ -54,6 +55,8 @@ struct Active {
     metrics: Arc<Mutex<Metrics>>,
     last_timing: Option<(u64, Instant, u64)>,
     last_arrival: Option<Instant>,
+    live: Option<mpsc::SyncSender<AudioPacket>>,
+    live_stats: Option<Arc<crate::playout::OutputStats>>,
 }
 
 pub struct Server {
@@ -65,6 +68,7 @@ pub struct Server {
     active: Arc<Mutex<Option<Active>>>,
     stop: Arc<AtomicBool>,
     output: PathBuf,
+    route: Option<RouteOptions>,
 }
 
 impl Server {
@@ -87,10 +91,15 @@ impl Server {
             active: Arc::new(Mutex::new(None)),
             stop: Arc::new(AtomicBool::new(false)),
             output,
+            route: None,
         })
     }
     pub fn stop_flag(&self) -> Arc<AtomicBool> {
         self.stop.clone()
+    }
+    pub fn with_route(mut self, route: RouteOptions) -> Self {
+        self.route = Some(route);
+        self
     }
     pub fn pairing_link(&self, host: &str) -> String {
         format!(
@@ -145,9 +154,10 @@ impl Server {
                     let output = self.output.clone();
                     let port = self.address.port();
                     let stop = self.stop.clone();
+                    let route = self.route.clone();
                     handlers.push(thread::spawn(move || {
                         if let Err(error) = control(
-                            socket, peer, config, token, owner, active, output, port, stop,
+                            socket, peer, config, token, owner, active, output, port, stop, route,
                         ) {
                             if !matches!(
                                 error.kind(),
@@ -170,9 +180,24 @@ impl Server {
                 if let Some(active) = self.active.lock().unwrap().as_ref() {
                     let stats = active.metrics.lock().unwrap();
                     println!(
-                        "Receiving: {} packets, {} rejected, {} queue drops, {:.2} ms packet variation",
-                        stats.authenticated, stats.rejected, stats.queue_drops, stats.jitter_ms
+                        "Receiving: {} packets, {} rejected, {} queue drops, {:.2} ms variation, last packet peak {:.1} dBFS",
+                        stats.authenticated,
+                        stats.rejected,
+                        stats.queue_drops,
+                        stats.jitter_ms,
+                        20.0 * stats.input_peak_linear.max(1e-10).log10()
                     );
+                    if let Some(live) = &active.live_stats {
+                        println!(
+                            "Output: {} frames queued, {} underruns, {} overruns, {} output errors, {} live queue drops, ASRC {} ppm",
+                            live.queued.load(Ordering::Relaxed),
+                            live.underruns.load(Ordering::Relaxed),
+                            live.overruns.load(Ordering::Relaxed),
+                            live.errors.load(Ordering::Relaxed),
+                            stats.live_queue_drops,
+                            live.ratio_ppm.load(Ordering::Relaxed) as i64 - 10000
+                        );
+                    }
                 }
                 next_status = Instant::now() + Duration::from_secs(1);
             }
@@ -208,6 +233,7 @@ fn control(
     output: PathBuf,
     udp_port: u16,
     stop: Arc<AtomicBool>,
+    route: Option<RouteOptions>,
 ) -> io::Result<()> {
     let connection = rustls::ServerConnection::new(config).map_err(io::Error::other)?;
     let socket = DeadlineSocket {
@@ -261,6 +287,26 @@ fn control(
                 {
                     let id = OsRng.next_u64();
                     let key = random_key();
+                    let live = if let Some(options) = &route {
+                        match LiveSession::start(
+                            options.clone(),
+                            sample_rate,
+                            output.join(format!("covoo-{id:016x}.live.json")),
+                        ) {
+                            Ok(session) => Some(session),
+                            Err(error) => {
+                                write_message(
+                                    &mut tls,
+                                    &Message::Error {
+                                        message: format!("Audio route unavailable: {error}"),
+                                    },
+                                )?;
+                                continue;
+                            }
+                        }
+                    } else {
+                        None
+                    };
                     let recorder = Recorder::new(&output, id, sample_rate)?;
                     let (sender, receiver) = mpsc::sync_channel(64);
                     let metrics = Arc::new(Mutex::new(Metrics::default()));
@@ -276,8 +322,10 @@ fn control(
                         metrics: metrics.clone(),
                         last_timing: None,
                         last_arrival: None,
+                        live: live.as_ref().map(|s| s.sender.clone()),
+                        live_stats: live.as_ref().map(|s| s.stats.clone()),
                     });
-                    recording = Some((worker, metrics, sample_rate));
+                    recording = Some((worker, metrics, sample_rate, live));
                     write_message(
                         &mut tls,
                         &Message::Started {
@@ -293,7 +341,10 @@ fn control(
                     first_position,
                     last_position,
                 } if recording.is_some() => {
-                    if let Some((_, metrics, _)) = recording.as_ref() {
+                    if let Some((_, _, _, Some(live))) = recording.as_ref() {
+                        live.stats.ending.store(true, Ordering::Relaxed);
+                    }
+                    if let Some((_, metrics, _, _)) = recording.as_ref() {
                         let mut metrics = metrics.lock().unwrap();
                         metrics.final_packets = Some(packets);
                         metrics.final_first = first_position;
@@ -301,8 +352,13 @@ fn control(
                     }
                     thread::sleep(Duration::from_millis(100));
                     registry.lock().unwrap().take();
-                    let (worker, metrics, _) = recording.take().unwrap();
+                    let (worker, metrics, _, live) = recording.take().unwrap();
                     let _ = worker.join();
+                    if let Some(live) = live {
+                        if let Err(error) = live.finish() {
+                            metrics.lock().unwrap().error = Some(error.to_string());
+                        }
+                    }
                     if let Some(error) = &metrics.lock().unwrap().error {
                         write_message(
                             &mut tls,
@@ -328,8 +384,11 @@ fn control(
         Ok(())
     })();
     registry.lock().unwrap().take();
-    if let Some((worker, _, _)) = recording {
+    if let Some((worker, _, _, live)) = recording {
         let _ = worker.join();
+        if let Some(live) = live {
+            let _ = live.finish();
+        }
     }
     result
 }
@@ -436,12 +495,20 @@ fn udp_loop(socket: UdpSocket, registry: Arc<Mutex<Option<Active>>>, stop: Arc<A
             active.last_timing = Some((counter, arrival, header.capture_ns));
         }
         stats.authenticated += 1;
+        stats.input_peak_linear = samples[..usize::from(header.format.frames())]
+            .iter()
+            .fold(0.0f32, |peak, sample| peak.max(sample.abs()));
         let packet = AudioPacket {
             counter,
             header,
             samples: samples[..usize::from(header.format.frames())].to_vec(),
             arrival,
         };
+        if let Some(live) = &active.live {
+            if live.try_send(packet.clone()).is_err() {
+                stats.live_queue_drops += 1;
+            }
+        }
         if active.sender.try_send(packet).is_err() {
             stats.queue_drops += 1;
         }

@@ -8,6 +8,7 @@ use std::{
     time::{Duration, Instant},
 };
 
+#[derive(Clone)]
 pub struct AudioPacket {
     pub counter: u64,
     pub header: Header,
@@ -29,7 +30,9 @@ pub struct Metrics {
     pub packet_events: Vec<serde_json::Value>,
     pub malformed: u64,
     pub queue_drops: u64,
+    pub live_queue_drops: u64,
     pub jitter_ms: f64,
+    pub input_peak_linear: f32,
     pub final_packets: Option<u64>,
     pub final_first: u64,
     pub final_end: u64,
@@ -247,6 +250,7 @@ impl Recorder {
             "udp_receive_buffer_bytes":metrics.udp_receive_buffer_bytes,
             "packet_events_first_32":metrics.packet_events,
             "receiver_queue_drops":metrics.queue_drops, "packet_delay_variation_ms":metrics.jitter_ms,
+            "live_queue_drops":metrics.live_queue_drops,
             "sender_final_summary_received":metrics.final_packets.is_some(),
             "sender_summary_valid":summary_valid, "pcm_continuity_verified":continuity,
             "leading_frames_not_received":leading, "trailing_frames_not_received":trailing,

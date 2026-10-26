@@ -31,6 +31,8 @@ jobs:
           New-Item -ItemType Directory -Force build/windows | Out-Null
           Copy-Item target/release/windows-receiver.exe build/windows/covoo-receiver.exe
           Copy-Item scripts/start-receiver.cmd build/windows/start-receiver.cmd
+          Copy-Item scripts/start-daw.cmd build/windows/start-daw.cmd
+          Copy-Item docs/testing/m3-device.md build/windows/DAW-setup.md
       - uses: actions/upload-artifact@v4
         if: runner.os == 'Windows'
         with:
