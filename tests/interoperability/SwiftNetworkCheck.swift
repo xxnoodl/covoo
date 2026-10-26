@@ -5,11 +5,23 @@ import Foundation
 @main
 struct SwiftNetworkCheck {
     static func main() throws {
-        guard CommandLine.arguments.count == 2 else { fatalError("Expected a local test pairing link") }
-        let pairing = try PairingDetails(link: CommandLine.arguments[1])
+        guard CommandLine.arguments.count >= 2 else { fatalError("Expected a local test pairing link") }
+        let rejectPin = CommandLine.arguments.contains("--bad-pin")
+        var link = CommandLine.arguments[1]
+        if rejectPin {
+            var components = URLComponents(string: link)!
+            components.queryItems = components.queryItems!.map { $0.name == "fp" ? URLQueryItem(name: "fp", value: String(repeating: "00", count: 32)) : $0 }
+            link = components.string!
+        }
+        let pairing = try PairingDetails(link: link)
         var started = false
         var client: AudioStreamer!
         client = try AudioStreamer(pairing: pairing) { state in
+            if rejectPin {
+                if state.connected { print("Incorrect certificate pin was accepted"); exit(1) }
+                if state.identityRejected { print("Swift rejected incorrect TLS certificate fingerprint"); exit(0) }
+                return
+            }
             if state.completedStreams == 1 {
                 guard state.sendErrors == 0, state.droppedFrames == 0, state.packets == 200 else {
                     print("Swift network check lost frames or failed sends")

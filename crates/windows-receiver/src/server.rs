@@ -340,6 +340,9 @@ fn udp_loop(socket: UdpSocket, registry: Arc<Mutex<Option<Active>>>, stop: Arc<A
             Ok(h)
                 if h.stream_id == active.id
                     && h.sequence == counter as u32
+                    && h.sample_position
+                        .checked_add(u64::from(h.format.frames()))
+                        .is_some()
                     && h.format.frames() <= PACKET_FRAMES
                     && h.format.sample_rate() == active.rate =>
             {

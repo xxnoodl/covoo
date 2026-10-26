@@ -1,6 +1,6 @@
 use std::{
     io,
-    net::{IpAddr, Ipv4Addr, SocketAddr},
+    net::{IpAddr, SocketAddr},
     path::PathBuf,
     time::Duration,
 };
@@ -58,7 +58,7 @@ fn run() -> io::Result<()> {
     if seconds == 0 || seconds > 86400 {
         return Err(io::Error::other("--seconds must be 1..86400"));
     }
-    let server = Server::bind(SocketAddr::from((Ipv4Addr::UNSPECIFIED, port)), output)?;
+    let server = Server::bind(SocketAddr::from((host, port)), output)?;
     let page = server.pairing_page(&host.to_string())?;
     let name = std::env::var("COVOO_PRODUCT_NAME")
         .or_else(|_| std::env::var("PHONEMIC_PRODUCT_NAME"))

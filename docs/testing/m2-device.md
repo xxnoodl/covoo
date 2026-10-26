@@ -27,6 +27,14 @@ Passing continuity run: receiver `pcm_continuity_verified=true`, sender final
 summary received, zero `packets_not_written`, queue drops, inserted silence and
 discontinuities. Phone capture/network drop and error counters should be zero.
 Physically compare phone/PC samples; software tests don't replace this step.
+With both WAVs and their same-name JSON reports present, run:
+
+```powershell
+python scripts/compare-recordings.py "PHONE.wav" "PC.wav"
+```
+
+This verifies every Float32 PCM byte matches for the uninterrupted take. It
+rejects reported capture/network loss, reconnects or missing/incomplete reports.
 Control RTT is a round trip, not one-way input or end-to-end monitoring latency.
 
 If pairing cannot connect, check permission under iOS Settings > covoo > Local

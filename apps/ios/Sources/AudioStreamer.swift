@@ -18,6 +18,7 @@ struct StreamState {
     var sendErrors: UInt64 = 0
     var reconnects: UInt64 = 0
     var completedStreams: UInt64 = 0
+    var identityRejected = false
     var rttMS: Double?
 }
 
@@ -59,6 +60,8 @@ final class AudioStreamer {
     private var endDeadline = 0.0
     private var lastSendProgress = 0.0
     private var connectedAt: Double?
+    private var endingCompletion: ((Result<StreamState, Error>) -> Void)?
+    private var queueDropBaseline: UInt64 = 0
 
     init(pairing: PairingDetails, update: @escaping (StreamState) -> Void) throws {
         guard let storage = pm_queue_create() else { throw WireFailure.invalid("Cannot allocate network queue") }
@@ -103,20 +106,28 @@ final class AudioStreamer {
                 return
             }
             rate = sampleRate
+            clearPCM()
+            state.packets = 0; state.bytes = 0; state.droppedFrames = 0
+            state.sendErrors = 0; state.reconnects = 0
+            queueDropBaseline = pm_queue_stats(pcmQueue).dropped_frames
             preparing = completion
             preparingDeadline = now + 5
             sendStart()
         }
     }
 
-    func end() {
+    func end(completion: ((Result<StreamState, Error>) -> Void)? = nil) {
         queue.async { [self] in
+            endingCompletion = completion
             preparing = nil
             if rate != nil, state.streaming {
                 ending = true
                 endDeadline = now + 2
                 pump()
-            } else { rate = nil; clearPCM() }
+            } else {
+                rate = nil; clearPCM()
+                finishEnding(.failure(WireFailure.invalid("No active network stream at stop; receiver summary unavailable.")))
+            }
         }
     }
 
@@ -129,6 +140,7 @@ final class AudioStreamer {
             timer?.cancel(); timer = nil
             key = nil; rate = nil
             failPreparation("Disconnected")
+            finishEnding(.failure(WireFailure.invalid("Disconnected before receiver finalized recording")))
             clearPCM()
             state.connected = false; state.streaming = false; state.status = "Disconnected"
             publish()
@@ -141,15 +153,18 @@ final class AudioStreamer {
         guard enabled else { return }
         generation &+= 1
         let attempt = generation
+        state.identityRejected = false
         let tls = NWProtocolTLS.Options()
         sec_protocol_options_set_min_tls_protocol_version(tls.securityProtocolOptions, .TLSv13)
         let pin = pairing.fingerprint
-        sec_protocol_options_set_verify_block(tls.securityProtocolOptions, { _, trust, complete in
+        sec_protocol_options_set_verify_block(tls.securityProtocolOptions, { [weak self] _, trust, complete in
             let reference = sec_trust_copy_ref(trust).takeRetainedValue()
             guard let chain = SecTrustCopyCertificateChain(reference) as? [SecCertificate], let leaf = chain.first else { complete(false); return }
             let certificate = SecCertificateCopyData(leaf) as Data
             // The full certificate fingerprint was supplied out of band. Discovery never supplies trust.
-            complete(Data(SHA256.hash(data: certificate)) == pin)
+            let matches = Data(SHA256.hash(data: certificate)) == pin
+            if !matches { self?.state.identityRejected = true }
+            complete(matches)
         }, queue)
         let parameters = NWParameters(tls: tls, tcp: NWProtocolTCP.Options())
         parameters.prohibitedInterfaceTypes = [.cellular]
@@ -167,7 +182,7 @@ final class AudioStreamer {
                 self.sendControl(["type":"hello", "version":1, "token":self.pairing.token, "device":"iPhone"])
                 self.receiveControl(connection, generation: attempt)
             case .waiting(let error), .failed(let error):
-                self.fail("Connection: \(error.localizedDescription). Check receiver and Local Network permission.")
+                self.fail(self.state.identityRejected ? "Receiver certificate fingerprint mismatch." : "Connection: \(error.localizedDescription). Check receiver and Local Network permission.")
             default: break
             }
         }
@@ -249,6 +264,7 @@ final class AudioStreamer {
             state.completedStreams += 1
             state.streaming = false; state.status = "Connected; receiver recording saved"
             udp?.cancel(); udp = nil; key = nil
+            finishEnding(.success(snapshot()))
             publish()
         case "error": throw WireFailure.invalid(message["message"] as? String ?? "Receiver rejected request")
         default: throw WireFailure.invalid("Unexpected receiver response")
@@ -346,6 +362,12 @@ final class AudioStreamer {
         completion?(.failure(WireFailure.invalid(message)))
     }
 
+    private func finishEnding(_ result: Result<StreamState, Error>) {
+        let completion = endingCompletion
+        endingCompletion = nil
+        completion?(result)
+    }
+
     private func fail(_ message: String) {
         guard enabled else { return }
         let wasConnected = state.connected
@@ -354,11 +376,14 @@ final class AudioStreamer {
         udp?.cancel(); udp = nil
         key = nil; inflight = 0
         state.connected = false; state.streaming = false; state.rttMS = nil
+        state.transport = "Not connected"
         if preparing != nil { failPreparation(message); rate = nil }
         if ending { ending = false; rate = nil }
+        finishEnding(.failure(WireFailure.invalid(message)))
         clearPCM()
         if wasConnected { state.reconnects += 1 }
-        state.status = message + " Retrying."
+        enabled = !state.identityRejected
+        state.status = message + (enabled ? " Retrying." : " Scan a fresh pairing QR.")
         retryAt = now + retryDelay
         retryDelay = min(5, retryDelay*2)
         publish()
@@ -380,16 +405,21 @@ final class AudioStreamer {
             clearPCM()
             if inflight == 0 { sendStop() } else { fail("Stream stop timed out") }
         }
+        if endingCompletion != nil, !ending, now > endDeadline + 5 { fail("Receiver finalization timed out"); return }
         if state.streaming { pump() }
         else if preparing == nil { clearPCM() }
         if now - lastPublish >= 0.25 { publish() }
     }
 
-    private func publish() {
-        lastPublish = now
+    private func snapshot() -> StreamState {
         var snapshot = state
         snapshot.sessionSeconds = state.connected ? now - (connectedAt ?? now) : 0
-        snapshot.droppedFrames += pm_queue_stats(pcmQueue).dropped_frames
-        update(snapshot)
+        snapshot.droppedFrames += pm_queue_stats(pcmQueue).dropped_frames - queueDropBaseline
+        return snapshot
+    }
+
+    private func publish() {
+        lastPublish = now
+        update(snapshot())
     }
 }

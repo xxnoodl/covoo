@@ -50,6 +50,7 @@ struct PhoneMicApp: App {
                         }
                         if !capture.state.files.isEmpty {
                             ShareLink(items: capture.state.files) { Text("Share recording and report") }
+                                .disabled(capture.requesting)
                         }
                     }
                     Section("Audio") {

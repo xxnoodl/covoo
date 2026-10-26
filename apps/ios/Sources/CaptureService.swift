@@ -4,6 +4,7 @@ import Foundation
 
 struct CaptureState {
     var recording = false
+    var finalizing = false
     var status = "Ready"
     var input = "Not queried"
     var sampleRate = 0.0
@@ -71,7 +72,7 @@ final class CaptureService {
     func start(streamer: AudioStreamer? = nil, update: @escaping (CaptureState) -> Void) {
         worker.async { [self] in
             publish = update
-            guard unit == nil else {
+            guard unit == nil, !state.finalizing else {
                 state.status = "Audio cleanup failed. Restart the app."
                 emit()
                 return
@@ -325,7 +326,6 @@ final class CaptureService {
             do { try drain() } catch { events.append("Final drain failed: \(error.localizedDescription)") }
         }
         updateCounters()
-        streamer?.end()
         let finalStats = capture.map { pm_capture_stats($0) }
         // Releasing the last AVAudioFile reference finalizes the WAV header.
         file = nil
@@ -357,6 +357,7 @@ final class CaptureService {
                 "actual_io_buffer_ms": state.bufferMS, "actual_input_channels": state.hardwareChannels,
                 "input": state.input, "device_side_format": state.deviceFormat,
                 "client_format": "mono Float32", "wire_transport": streamer == nil ? "off" : "TLS control + encrypted UDP",
+                "network_summary_pending":streamer != nil,
                 "frames_written": state.frames, "duration_from_written_frames_seconds": state.sampleRate > 0 ? Double(state.frames) / state.sampleRate : 0,
                 "wall_duration_seconds": startedAt.map { Date().timeIntervalSince($0) } ?? 0,
                 "callbacks": state.callbacks, "render_errors": state.renderErrors,
@@ -377,6 +378,44 @@ final class CaptureService {
             } catch { state.status += "; report failed: \(error.localizedDescription)" }
         }
         if let timelineURL, FileManager.default.fileExists(atPath: timelineURL.path) { state.files.append(timelineURL) }
+        if let streamer, let reportURL {
+            let localStatus = state.status
+            state.finalizing = true
+            state.status = "Finalizing receiver recording"
+            emit()
+            streamer.end { [weak self] result in
+                guard let self else { return }
+                self.worker.async {
+                    do {
+                        guard var report = try JSONSerialization.jsonObject(with: Data(contentsOf: reportURL)) as? [String: Any] else {
+                            throw CaptureFailure(message: "Invalid local report")
+                        }
+                        report["network_summary_pending"] = false
+                        switch result {
+                        case .success(let network):
+                            report["network_completed"] = true
+                            report["network_packets_sent"] = network.packets
+                            report["network_bytes_sent"] = network.bytes
+                            report["network_dropped_frames"] = network.droppedFrames
+                            report["network_send_errors"] = network.sendErrors
+                            report["network_reconnects"] = network.reconnects
+                            if let rtt = network.rttMS { report["control_rtt_ms"] = rtt }
+                            else { report["control_rtt_ms"] = NSNull() }
+                            self.state.status = localStatus + "; receiver recording saved"
+                        case .failure(let error):
+                            report["network_completed"] = false
+                            report["network_stop_error"] = error.localizedDescription
+                            self.state.status = localStatus + "; " + error.localizedDescription
+                        }
+                        let data = try JSONSerialization.data(withJSONObject: report, options: [.prettyPrinted, .sortedKeys])
+                        try data.write(to: reportURL, options: .atomic)
+                    } catch { self.state.status = "Network report failed: \(error.localizedDescription)" }
+                    self.state.finalizing = false
+                    self.emit()
+                }
+            }
+            return
+        }
         emit()
     }
 

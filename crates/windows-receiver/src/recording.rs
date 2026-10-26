@@ -52,6 +52,12 @@ pub struct Recorder {
 
 impl Recorder {
     pub fn new(directory: &std::path::Path, session: u64, rate: u32) -> io::Result<Self> {
+        if audio_core::MonoFormat::new(rate, 240).is_none() {
+            return Err(io::Error::new(
+                io::ErrorKind::InvalidInput,
+                "unsupported recording rate",
+            ));
+        }
         fs::create_dir_all(directory)?;
         let base = directory.join(format!("covoo-{session:016x}"));
         let spec = hound::WavSpec {
@@ -90,14 +96,20 @@ impl Recorder {
         })
     }
     pub fn push(&mut self, packet: AudioPacket) -> io::Result<()> {
+        self.push_at(packet, Instant::now())
+    }
+    fn push_at(&mut self, packet: AudioPacket, now: Instant) -> io::Result<()> {
         if packet.counter < self.next {
             self.late += 1;
             return Ok(());
         }
         self.pending.entry(packet.counter).or_insert(packet);
-        self.flush(false)
+        self.flush_at(false, now)
     }
     pub fn flush(&mut self, ending: bool) -> io::Result<()> {
+        self.flush_at(ending, Instant::now())
+    }
+    fn flush_at(&mut self, ending: bool, now: Instant) -> io::Result<()> {
         use std::io::Write;
         loop {
             let Some((&first, _)) = self.pending.first_key_value() else {
@@ -106,7 +118,7 @@ impl Recorder {
             let aged = self
                 .pending
                 .values()
-                .any(|p| p.arrival.elapsed() >= Duration::from_millis(20));
+                .any(|p| now.saturating_duration_since(p.arrival) >= Duration::from_millis(20));
             if first != self.next && !ending && self.pending.len() < 16 && !aged {
                 break;
             }
@@ -193,6 +205,7 @@ impl Recorder {
             .expected_position
             .map(|position| metrics.final_end.saturating_sub(position));
         let continuity = summary_valid
+            && self.frames > 0
             && lost == Some(0)
             && self.missing_packets == 0
             && self.discontinuities == 0
@@ -248,5 +261,125 @@ pub fn record_worker(
             eprintln!("Recording failed: {error}");
             metrics.lock().unwrap().error = Some(error.to_string());
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    fn test_recorder() -> Recorder {
+        let directory =
+            std::env::temp_dir().join(format!("covoo-reorder-{:016x}", rand::random::<u64>()));
+        Recorder::new(&directory, 7, 48000).unwrap()
+    }
+    fn packet(counter: u64, position: u64, aged: bool) -> AudioPacket {
+        AudioPacket {
+            counter,
+            header: Header {
+                discontinuity: false,
+                stream_id: 7,
+                sequence: counter as u32,
+                sample_position: position,
+                capture_ns: position * 20835,
+                format: audio_core::MonoFormat::new(48000, 4).unwrap(),
+            },
+            samples: vec![counter as f32 / 16.0; 4],
+            arrival: if aged {
+                Instant::now() - Duration::from_millis(50)
+            } else {
+                Instant::now()
+            },
+        }
+    }
+    fn result_and_cleanup(recorder: Recorder, metrics: Metrics) -> (serde_json::Value, Vec<f32>) {
+        let path = recorder.finish(&metrics).unwrap();
+        let report = serde_json::from_slice(&fs::read(&path).unwrap()).unwrap();
+        let samples = hound::WavReader::open(path.with_extension("wav"))
+            .unwrap()
+            .samples::<f32>()
+            .collect::<Result<Vec<_>, _>>()
+            .unwrap();
+        for extension in ["wav", "csv", "json"] {
+            fs::remove_file(path.with_extension(extension)).unwrap();
+        }
+        fs::remove_dir(path.parent().unwrap()).unwrap();
+        (report, samples)
+    }
+    #[test]
+    fn variable_delay_and_reordering_preserve_samples() {
+        let mut recorder = test_recorder();
+        let clock = Instant::now();
+        for (step, counter) in [1, 0, 3, 2, 5, 4].into_iter().enumerate() {
+            let arrival = clock + Duration::from_millis(step as u64);
+            let mut packet = packet(counter, counter * 4, false);
+            packet.arrival = arrival;
+            recorder.push_at(packet, arrival).unwrap();
+        }
+        let (report, samples) = result_and_cleanup(
+            recorder,
+            Metrics {
+                final_packets: Some(6),
+                final_end: 24,
+                ..Metrics::default()
+            },
+        );
+        assert_eq!(report["pcm_continuity_verified"], true);
+        let expected: Vec<_> = (0..6).flat_map(|i| vec![i as f32 / 16.0; 4]).collect();
+        assert_eq!(samples, expected);
+    }
+    #[test]
+    fn loss_late_packet_and_missing_tail_are_explicit() {
+        let mut recorder = test_recorder();
+        recorder.push(packet(0, 0, false)).unwrap();
+        recorder.push(packet(2, 8, true)).unwrap();
+        recorder.push(packet(1, 4, false)).unwrap();
+        let (report, samples) = result_and_cleanup(
+            recorder,
+            Metrics {
+                final_packets: Some(4),
+                final_end: 16,
+                ..Metrics::default()
+            },
+        );
+        assert_eq!(report["packets_not_written"], 2);
+        assert_eq!(report["late_packets"], 1);
+        assert_eq!(report["silence_frames_inserted"], 4);
+        assert_eq!(report["trailing_frames_not_received"], 4);
+        assert_eq!(report["pcm_continuity_verified"], false);
+        assert_eq!(&samples[4..8], &[0.0; 4]);
+        assert_eq!(samples.len(), 12);
+    }
+    #[test]
+    fn disconnect_without_stop_cannot_claim_continuity() {
+        let mut recorder = test_recorder();
+        recorder.push(packet(0, 0, false)).unwrap();
+        let (report, samples) = result_and_cleanup(recorder, Metrics::default());
+        assert_eq!(report["sender_final_summary_received"], false);
+        assert!(report["packets_not_written"].is_null());
+        assert_eq!(report["pcm_continuity_verified"], false);
+        assert_eq!(samples.len(), 4);
+    }
+    #[test]
+    fn large_discontinuity_and_reorder_storage_are_bounded() {
+        let mut recorder = test_recorder();
+        recorder.push(packet(0, 0, false)).unwrap();
+        recorder.push(packet(1, 1_000_000, false)).unwrap();
+        let (report, samples) = result_and_cleanup(
+            recorder,
+            Metrics {
+                final_packets: Some(2),
+                final_end: 1_000_004,
+                ..Metrics::default()
+            },
+        );
+        assert_eq!(report["large_gap_frames_omitted"], 999996);
+        assert_eq!(report["pcm_continuity_verified"], false);
+        assert_eq!(samples.len(), 8);
+        let mut recorder = test_recorder();
+        for i in (100..1000).rev() {
+            recorder.push(packet(i, i * 4, false)).unwrap();
+            assert!(recorder.pending.len() < 16);
+        }
+        result_and_cleanup(recorder, Metrics::default());
     }
 }

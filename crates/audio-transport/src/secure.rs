@@ -86,6 +86,9 @@ impl Receiver {
             return Err(PacketError::Session);
         }
         let counter = u64::from_le_bytes(packet[12..20].try_into().unwrap());
+        if counter == u64::MAX {
+            return Err(PacketError::Exhausted);
+        }
         if let Some(highest) = self.highest {
             if counter <= highest {
                 let age = highest - counter;
@@ -149,6 +152,11 @@ mod tests {
         let mut tx = Sender::new(&[7; 32], 42);
         let packets: Vec<_> = (0..132).map(|_| tx.seal(b"test PCM").unwrap()).collect();
         let mut rx = Receiver::new(&[7; 32], 42);
+        let mut forged = packets[0].clone();
+        forged[12..20].copy_from_slice(&(u64::MAX - 1).to_le_bytes());
+        assert_eq!(rx.open(&forged), Err(PacketError::Authentication));
+        forged[12..20].copy_from_slice(&u64::MAX.to_le_bytes());
+        assert_eq!(rx.open(&forged), Err(PacketError::Exhausted));
         let mut bad = packets[1].clone();
         *bad.last_mut().unwrap() ^= 1;
         assert_eq!(rx.open(&bad), Err(PacketError::Authentication));

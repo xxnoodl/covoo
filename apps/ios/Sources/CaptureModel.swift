@@ -54,7 +54,7 @@ final class CaptureModel: ObservableObject {
             service.start(streamer: streamToPC ? streamer : nil) { [weak self] value in
                 Task { @MainActor in
                     self?.state = value
-                    self?.requesting = false
+                    self?.requesting = value.finalizing
                 }
             }
         }

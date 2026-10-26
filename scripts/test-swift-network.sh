@@ -4,7 +4,7 @@ cd "$(dirname "$0")/.."
 mkdir -p build
 test_dir=$(mktemp -d "$PWD/build/swift-network.XXXXXX")
 cargo build -p windows-receiver --locked
-target/debug/windows-receiver --serve --host 127.0.0.1 --port 0 --seconds 25 \
+target/debug/windows-receiver --serve --host 127.0.0.1 --port 0 --seconds 90 \
   --no-discovery --output "$test_dir" > "$test_dir/receiver.log" 2>&1 &
 receiver_pid=$!
 trap 'kill "$receiver_pid" 2>/dev/null || true' EXIT
@@ -25,6 +25,7 @@ swiftc -swift-version 5 -import-objc-header apps/ios/Native/PhoneMic-Bridging-He
   tests/interoperability/SwiftNetworkCheck.swift "$test_dir/queue.o" "$test_dir/capture.o" \
   -framework AudioToolbox -framework Network -framework Security -o "$test_dir/client"
 "$test_dir/client" "$pairing"
+"$test_dir/client" "$pairing" --bad-pin
 python3 - "$test_dir" <<'PY'
 import array, json, pathlib, struct, sys
 root = pathlib.Path(sys.argv[1])

@@ -16,12 +16,13 @@ use std::{
 };
 
 fn client(
-    server: &Server,
+    address: SocketAddr,
+    certificate: &rustls::pki_types::CertificateDer<'static>,
     trusted: bool,
 ) -> io::Result<rustls::StreamOwned<rustls::ClientConnection, TcpStream>> {
     let mut roots = rustls::RootCertStore::empty();
     let certificate = if trusted {
-        server.identity.certificate.clone()
+        certificate.clone()
     } else {
         create_identity()?.certificate
     };
@@ -36,7 +37,7 @@ fn client(
     let connection =
         rustls::ClientConnection::new(Arc::new(config), "covoo.local".try_into().unwrap())
             .map_err(io::Error::other)?;
-    let socket = TcpStream::connect(server.address)?;
+    let socket = TcpStream::connect(address)?;
     socket.set_read_timeout(Some(Duration::from_secs(5)))?;
     socket.set_write_timeout(Some(Duration::from_secs(5)))?;
     Ok(rustls::StreamOwned::new(connection, socket))
@@ -67,9 +68,11 @@ pub fn smoke() -> io::Result<()> {
         SocketAddr::from((Ipv4Addr::LOCALHOST, 0)),
         directory.clone(),
     )?;
-    let mut bad_pin = client(&server, false)?;
-    let mut bad_token = client(&server, true)?;
-    let mut tls = client(&server, true)?;
+    let address = server.address;
+    let certificate = server.identity.certificate.clone();
+    let mut bad_pin = client(address, &certificate, false)?;
+    let mut bad_token = client(address, &certificate, true)?;
+    let mut tls = client(address, &certificate, true)?;
     let stop = server.stop_flag();
     let token = server.token;
     let worker = thread::spawn(move || server.run(Duration::from_secs(15)));
@@ -115,6 +118,29 @@ pub fn smoke() -> io::Result<()> {
         let mut previous_id = None;
         let mut previous_key = None;
         for (stream, rate) in [(0, 48_000), (1, 44_100)] {
+            if stream == 1 {
+                tls.sock.shutdown(std::net::Shutdown::Both)?;
+                let deadline = std::time::Instant::now() + Duration::from_secs(2);
+                loop {
+                    let mut resumed = client(address, &certificate, true)?;
+                    write_message(
+                        &mut resumed,
+                        &Message::Hello {
+                            version: 1,
+                            token: hex(&token),
+                            device: "reconnected synthetic".into(),
+                        },
+                    )?;
+                    if matches!(read_message(&mut resumed)?, Message::Ready { .. }) {
+                        tls = resumed;
+                        break;
+                    }
+                    if std::time::Instant::now() > deadline {
+                        return Err(io::Error::other("reconnect timeout"));
+                    }
+                    thread::sleep(Duration::from_millis(10));
+                }
+            }
             write_message(
                 &mut tls,
                 &Message::Start {
@@ -184,6 +210,7 @@ pub fn smoke() -> io::Result<()> {
             let report: serde_json::Value =
                 serde_json::from_slice(&std::fs::read(base.with_extension("json"))?)?;
             assert_eq!(report["packets_not_written"], 0);
+            assert_eq!(report["pcm_continuity_verified"], true);
             assert_eq!(report["rejected_datagrams"], 1);
             assert_eq!(report["replay_rejected"], 1);
             drop(wav);

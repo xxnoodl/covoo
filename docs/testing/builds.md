@@ -37,6 +37,22 @@ from the repository root:
 ```sh
 bash scripts/test-native.sh
 bash scripts/test-ios.sh
+bash scripts/test-swift-network.sh
 ```
 
 The simulator test uses synthetic PCM and does not validate the microphone.
+The network test compiles the same Swift sender with Network.framework and
+CryptoKit on macOS and checks it against the Rust receiver on loopback.
+
+M2 additions:
+
+```powershell
+python -m unittest discover -s tests/interoperability -p test_compare_recordings.py
+cargo run --release --locked -p audio-transport --example crypto_bench
+```
+
+The Windows artifact contains `covoo-receiver.exe` and `start-receiver.cmd`.
+Source builds keep the Cargo binary name `windows-receiver`. The iOS target and
+bundle identifier stay unchanged so updates can retain the existing app data;
+display/artifact names are covoo. Use PRODUCT_DISPLAY_NAME or COVOO_PRODUCT_NAME
+for naming configuration. The historical PHONEMIC_PRODUCT_NAME remains a CLI fallback.

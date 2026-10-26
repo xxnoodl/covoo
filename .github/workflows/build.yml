@@ -20,6 +20,7 @@ jobs:
       - run: cargo fmt --all -- --check
       - run: cargo clippy --workspace --all-targets --locked -- -D warnings
       - run: cargo test --workspace --locked
+      - run: python -m unittest discover -s tests/interoperability -p test_compare_recordings.py
       - run: cargo build --workspace --release --locked
       - run: cargo run -p windows-receiver --locked
       - run: cargo run --release --locked -p audio-transport --example crypto_bench
