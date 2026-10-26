@@ -21,7 +21,7 @@ PY
 clang -std=c11 -Wall -Wextra -Werror -I apps/ios/Native -c apps/ios/Native/PCMQueue.c -o "$test_dir/queue.o"
 clang -std=c11 -Wall -Wextra -Werror -I apps/ios/Native -c apps/ios/Native/CaptureBridge.c -o "$test_dir/capture.o"
 swiftc -swift-version 5 -import-objc-header apps/ios/Native/PhoneMic-Bridging-Header.h \
-  apps/ios/Sources/WireProtocol.swift apps/ios/Sources/AudioStreamer.swift \
+  apps/ios/Sources/WireProtocol.swift apps/ios/Sources/PacketProtection.swift apps/ios/Sources/AudioStreamer.swift \
   tests/interoperability/SwiftNetworkCheck.swift "$test_dir/queue.o" "$test_dir/capture.o" \
   -framework AudioToolbox -framework Network -framework Security -o "$test_dir/client"
 "$test_dir/client" "$pairing"
@@ -35,6 +35,7 @@ report = json.loads(reports[0].read_text())
 assert report['source_frames_written'] == 48000 and report['packets_not_written'] == 0
 assert report['rejected_datagrams'] == 0 and report['malformed_packets'] == 0
 assert report['silence_frames_inserted'] == 0 and report['discontinuities'] == 0
+assert 0 < report['authenticated_duplicates'] <= 200 and report['authenticated_too_old'] == 0
 with reports[0].with_suffix('.wav').open('rb') as f:
     assert f.read(4) == b'RIFF'
     f.read(8)

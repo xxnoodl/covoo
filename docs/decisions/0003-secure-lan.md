@@ -28,6 +28,13 @@ stream; reconnection uses fresh keys and a new recording segment.
 
 Data-plane packets contain the existing version-1 PCM codec. At 240 frames,
 each authenticated datagram is 1036 bytes, below the 1200-byte application cap.
+Optional packet protection sends one byte-identical ciphertext copy after a
+5 ms scheduling delay, expiring it after 15 ms. Originals aren't held back.
+The copy queue holds at most eight datagrams and shares the eight in-flight
+send limit; copy dispatch uses at most four slots at a time. Copies reuse
+existing bytes, never re-encrypt different plaintext under the same nonce.
+Receivers authenticate and deliver only the first valid copy. Unique packet
+counts and Stop summaries exclude copies; transmitted-byte counts include them.
 No reliability retransmission for late audio. The sender uses a bounded queue,
 bounded in-flight sends and drops stale captured blocks with explicit counters.
 Callbacks remain isolated from all networking and file I/O.
@@ -36,6 +43,13 @@ M2 receiver uses bounded reordering and gap reporting for file assembly. It has
 no endpoint clock to follow yet; playback ASRC/clock control is not claimed.
 Missing audio is counted and bounded silence is explicit; disconnects create
 new segments. No one-way or end-to-end latency is inferred from device clocks.
+
+Protection is an experimental LAN option, enabled by default and selectable
+before connecting. It doubles application bandwidth at steady state:
+approximately 1.66 to 3.32 Mbit/s for 48 kHz mono/240 frames, excluding IP/Wi-Fi
+overhead. It can't recover loss of both copies and may worsen congestion.
+It doesn't replace later adaptive congestion management or physical benchmarks.
+See [RFC 8085](https://www.rfc-editor.org/rfc/rfc8085.html) for UDP congestion guidance.
 
 References checked before implementation:
 

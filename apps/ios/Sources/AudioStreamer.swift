@@ -14,6 +14,9 @@ struct StreamState {
     var status = "Disconnected"
     var packets: UInt64 = 0
     var bytes: UInt64 = 0
+    var protectionEnabled = true
+    var redundantPackets: UInt64 = 0
+    var skippedCopies: UInt64 = 0
     var droppedFrames: UInt64 = 0
     var sendErrors: UInt64 = 0
     var reconnects: UInt64 = 0
@@ -62,8 +65,9 @@ final class AudioStreamer {
     private var connectedAt: Double?
     private var endingCompletion: ((Result<StreamState, Error>) -> Void)?
     private var queueDropBaseline: UInt64 = 0
+    private var protection = PacketProtection()
 
-    init(pairing: PairingDetails, update: @escaping (StreamState) -> Void) throws {
+    init(pairing: PairingDetails, packetProtection: Bool = true, update: @escaping (StreamState) -> Void) throws {
         guard let storage = pm_queue_create() else { throw WireFailure.invalid("Cannot allocate network queue") }
         pcmQueue = storage
         samples = .allocate(capacity: Int(PM_MAX_FRAMES))
@@ -71,6 +75,7 @@ final class AudioStreamer {
         self.pairing = pairing
         self.update = update
         state.receiver = "\(pairing.host):\(pairing.port)"
+        state.protectionEnabled = packetProtection
     }
 
     deinit {
@@ -108,6 +113,8 @@ final class AudioStreamer {
             rate = sampleRate
             clearPCM()
             state.packets = 0; state.bytes = 0; state.droppedFrames = 0
+            state.redundantPackets = 0; state.skippedCopies = 0
+            protection = PacketProtection()
             state.sendErrors = 0; state.reconnects = 0
             queueDropBaseline = pm_queue_stats(pcmQueue).dropped_frames
             preparing = completion
@@ -139,6 +146,7 @@ final class AudioStreamer {
             udp?.cancel(); udp = nil
             timer?.cancel(); timer = nil
             key = nil; rate = nil
+            clearCopies()
             failPreparation("Disconnected")
             finishEnding(.failure(WireFailure.invalid("Disconnected before receiver finalized recording")))
             clearPCM()
@@ -235,6 +243,7 @@ final class AudioStreamer {
             streamID = session
             key = SymmetricKey(data: secret)
             counter = 0; firstPosition = 0; lastPosition = 0
+            clearCopies()
             lastSendProgress = now
             expectedPosition = nil; inflight = 0
             let udpParameters = NWParameters.udp
@@ -292,7 +301,12 @@ final class AudioStreamer {
     }
 
     private func pump() {
-        guard state.streaming, let udp, let key, let rate else { return }
+        guard state.streaming, udp != nil, let key, let rate else { return }
+        // Reserve half the in-flight budget for new audio. Expire old copies
+        // instead of adding latency when the network worker stalls.
+        while inflight < 4, let packet = protection.takeDue(at: now) {
+            sendAudio(packet, redundant: true)
+        }
         while inflight < 8 {
             if pendingInfo == nil {
                 var info = PMBlockInfo()
@@ -325,23 +339,36 @@ final class AudioStreamer {
                 if reserved == 0 { firstPosition = position }
                 lastPosition = position + UInt64(count)
                 expectedPosition = lastPosition
-                state.packets += 1; state.bytes += UInt64(packet.count)
-                inflight += 1
-                let epoch = generation
-                udp.send(content: packet, completion: .contentProcessed { [weak self] error in
-                    guard let self, self.generation == epoch else { return }
-                    self.inflight -= 1
-                    self.lastSendProgress = self.now
-                    if let error { self.state.sendErrors += 1; self.fail(error.localizedDescription) }
-                    else { self.pump() }
-                })
+                state.packets += 1
+                sendAudio(packet, redundant: false)
+                if state.protectionEnabled { protection.schedule(packet, at: now) }
             } catch { fail(error.localizedDescription); return }
             pendingOffset += count
             if pendingOffset == Int(info.frames) { pendingInfo = nil }
         }
-        if ending, pendingInfo == nil, pm_queue_stats(pcmQueue).occupancy == 0, inflight == 0 {
+        if ending, pendingInfo == nil, pm_queue_stats(pcmQueue).occupancy == 0, protection.count == 0, inflight == 0 {
             sendStop()
         }
+    }
+
+    private func sendAudio(_ packet: Data, redundant: Bool) {
+        guard let udp else { return }
+        state.bytes += UInt64(packet.count)
+        if redundant { state.redundantPackets += 1 }
+        inflight += 1
+        let epoch = generation
+        udp.send(content: packet, completion: .contentProcessed { [weak self] error in
+            guard let self, self.generation == epoch else { return }
+            self.inflight -= 1
+            self.lastSendProgress = self.now
+            if let error { self.state.sendErrors += 1; self.fail(error.localizedDescription) }
+            else { self.pump() }
+        })
+    }
+
+    private func clearCopies() {
+        state.skippedCopies += protection.skipped + UInt64(protection.count)
+        protection = PacketProtection()
     }
 
     private func sendStop() {
@@ -375,6 +402,7 @@ final class AudioStreamer {
         control?.cancel(); control = nil
         udp?.cancel(); udp = nil
         key = nil; inflight = 0
+        clearCopies()
         state.connected = false; state.streaming = false; state.rttMS = nil
         state.transport = "Not connected"
         if preparing != nil { failPreparation(message); rate = nil }
@@ -403,6 +431,7 @@ final class AudioStreamer {
         if state.streaming, inflight > 0, now - lastSendProgress > 0.5 { fail("UDP sends stalled"); return }
         if ending, now > endDeadline {
             clearPCM()
+            clearCopies()
             if inflight == 0 { sendStop() } else { fail("Stream stop timed out") }
         }
         if endingCompletion != nil, !ending, now > endDeadline + 5 { fail("Receiver finalization timed out"); return }
@@ -413,6 +442,7 @@ final class AudioStreamer {
 
     private func snapshot() -> StreamState {
         var snapshot = state
+        snapshot.skippedCopies += protection.skipped
         snapshot.sessionSeconds = state.connected ? now - (connectedAt ?? now) : 0
         snapshot.droppedFrames += pm_queue_stats(pcmQueue).dropped_frames - queueDropBaseline
         return snapshot

@@ -32,3 +32,9 @@ remain in process memory except the receiver's local pairing.html. That file is
 not encrypted at rest and is protected only by the user's directory permissions.
 Store the receiver/output folder under your user account, not a shared public folder.
 M2 has not had an external security audit.
+
+Optional packet protection stores at most eight existing encrypted datagrams
+for a delayed second transmission. No extra encryption or nonce allocation
+occurs for a copy. The receiver authenticates it and rejects an already-delivered
+counter. Expected duplicate counts increase with protection. Pending copies are
+discarded on session/key changes. All scheduling stays on the network worker.

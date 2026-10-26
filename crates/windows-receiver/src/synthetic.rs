@@ -141,7 +141,7 @@ pub fn smoke() -> io::Result<()> {
         let udp = UdpSocket::bind((Ipv4Addr::LOCALHOST, 0))?;
         let mut previous_id = None;
         let mut previous_key = None;
-        for (stream, rate) in [(0, 48_000), (1, 44_100)] {
+        for (stream, rate) in [(0, 48_000), (1, 44_100), (2, 48_000), (3, 48_000)] {
             if stream == 1 {
                 tls.sock.shutdown(std::net::Shutdown::Both)?;
                 let deadline = std::time::Instant::now() + Duration::from_secs(2);
@@ -202,11 +202,27 @@ pub fn smoke() -> io::Result<()> {
             let mut bad = encrypted[0].clone();
             *bad.last_mut().unwrap() ^= 1;
             udp.send_to(&bad, target)?;
-            for pair in (0..count as usize).step_by(2) {
-                udp.send_to(&encrypted[pair + 1], target)?;
-                thread::sleep(Duration::from_millis(2));
-                udp.send_to(&encrypted[pair], target)?;
-                thread::sleep(Duration::from_millis(3));
+            if stream >= 2 {
+                // Deliberately lose primaries 0, 17 and 19; deliver each delayed
+                // ciphertext copy after the next primary. Stream 3 loses both
+                // copies of 17, which must remain a real reported gap.
+                for i in 0..encrypted.len() {
+                    if i % 17 != 0 && i != encrypted.len() - 1 {
+                        udp.send_to(&encrypted[i], target)?;
+                    }
+                    if i > 0 && !(stream == 3 && i - 1 == 17) {
+                        udp.send_to(&encrypted[i - 1], target)?;
+                    }
+                    thread::sleep(Duration::from_millis(5));
+                }
+                udp.send_to(encrypted.last().unwrap(), target)?;
+            } else {
+                for pair in (0..count as usize).step_by(2) {
+                    udp.send_to(&encrypted[pair + 1], target)?;
+                    thread::sleep(Duration::from_millis(2));
+                    udp.send_to(&encrypted[pair], target)?;
+                    thread::sleep(Duration::from_millis(3));
+                }
             }
             udp.send_to(encrypted.last().unwrap(), target)?;
             if stream == 0 {
@@ -235,17 +251,39 @@ pub fn smoke() -> io::Result<()> {
                 .map_err(io::Error::other)?;
             assert_eq!(samples.len(), count as usize * 240);
             for (i, sample) in samples.iter().enumerate() {
-                assert_eq!(*sample, expected_sample(i as u64, rate));
+                let expected = if stream == 3 && (17 * 240..18 * 240).contains(&i) {
+                    0.0
+                } else {
+                    expected_sample(i as u64, rate)
+                };
+                assert_eq!(*sample, expected);
             }
             let report: serde_json::Value =
                 serde_json::from_slice(&std::fs::read(base.with_extension("json"))?)?;
-            assert_eq!(report["packets_not_written"], 0);
-            assert_eq!(report["pcm_continuity_verified"], true);
+            assert_eq!(report["packets_not_written"], u64::from(stream == 3));
+            assert_eq!(report["pcm_continuity_verified"], stream != 3);
+            assert_eq!(
+                report["silence_frames_inserted"],
+                if stream == 3 { 240 } else { 0 }
+            );
             assert_eq!(report["rejected_datagrams"], 2);
-            assert_eq!(report["authenticated_duplicates"], 1);
+            let duplicates = if stream >= 2 { 18 } else { 1 };
+            assert_eq!(report["authenticated_duplicates"], duplicates);
             assert_eq!(report["authenticated_too_old"], u64::from(stream == 0));
-            assert_eq!(report["replay_rejected"], if stream == 0 { 2 } else { 1 });
-            assert_eq!(report["out_of_order_packets"], count / 2);
+            assert_eq!(
+                report["replay_rejected"],
+                duplicates + u64::from(stream == 0)
+            );
+            assert_eq!(
+                report["out_of_order_packets"],
+                if stream == 2 {
+                    2
+                } else if stream == 3 {
+                    1
+                } else {
+                    count / 2
+                }
+            );
             assert!(report["udp_receive_buffer_bytes"].as_u64().unwrap() > 0);
             assert!(report["packet_events_first_32"].as_array().unwrap().len() <= 32);
             drop(wav);

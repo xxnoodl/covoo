@@ -15,6 +15,9 @@ M1 passed. M2 physical acceptance is pending; no Windows microphone endpoint yet
    discovery alone never establishes trust.
 5. Tap Stream to PC and record locally. Speak/clap periodically for five minutes.
    Keep the app open/unlocked. Check packets increase on phone and PC.
+   Leave Packet protection enabled before connecting for the recovery build.
+   Switching apps stops recording; restarted takes are separate sessions.
+   Don't switch apps during the uninterrupted acceptance take.
 6. Stop in covoo. Wait for "receiver recording saved" before closing the receiver.
    Keep the phone's exported WAV/JSON/CSV and the PC's matching WAV/JSON/CSV.
    Don't share pairing.html or the pairing link: they contain a session secret.
@@ -37,6 +40,9 @@ python scripts/compare-recordings.py "PHONE.wav" "PC.wav"
 This verifies every Float32 PCM byte matches for the uninterrupted take. It
 rejects reported capture/network loss, reconnects or missing/incomplete reports.
 Control RTT is a round trip, not one-way input or end-to-end monitoring latency.
+With protection enabled, authenticated duplicates are expected and don't fail
+continuity if every unique packet is written once. Skipped backups don't
+necessarily mean lost audio; use the receiver report and full WAV comparison.
 
 If pairing cannot connect, check permission under iOS Settings > covoo > Local
 Network and check the PC's private-network firewall prompt. If multiple adapters

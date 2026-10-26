@@ -23,7 +23,9 @@ struct SwiftNetworkCheck {
                 return
             }
             if state.completedStreams == 1 {
-                guard state.sendErrors == 0, state.droppedFrames == 0, state.packets == 200 else {
+                guard state.sendErrors == 0, state.droppedFrames == 0, state.packets == 200,
+                    state.redundantPackets > 0,
+                    state.redundantPackets + state.skippedCopies == 200 else {
                     print("Swift network check lost frames or failed sends")
                     exit(1)
                 }

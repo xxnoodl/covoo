@@ -8,6 +8,7 @@ final class CaptureModel: ObservableObject {
     @Published var requesting = false
     @Published var streamState = StreamState()
     @Published var pairingLink = ""
+    @Published var packetProtection = true
     private var streamer: AudioStreamer?
     private let service = CaptureService()
     private var observers: [NSObjectProtocol] = []
@@ -76,7 +77,7 @@ final class CaptureModel: ObservableObject {
         do {
             let pairing = try PairingDetails(link: pairingLink)
             streamer?.disconnect()
-            let transport = try AudioStreamer(pairing: pairing) { [weak self] value in
+            let transport = try AudioStreamer(pairing: pairing, packetProtection: packetProtection) { [weak self] value in
                 Task { @MainActor in self?.streamState = value }
             }
             streamer = transport

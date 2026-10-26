@@ -21,6 +21,9 @@ struct PhoneMicApp: App {
                             .autocorrectionDisabled()
                             .disabled(capture.state.recording || capture.requesting)
                         Text("Scan the receiver QR with Camera, or paste its pairing link here.").font(.caption)
+                        Toggle("Packet protection", isOn: $capture.packetProtection)
+                            .disabled(capture.streamState.connected || capture.state.recording || capture.requesting)
+                        Text("Sends a backup copy to reduce brief audio gaps. Uses about twice the network traffic. Choose before connecting.").font(.caption)
                         if capture.streamState.connected {
                             Button("Disconnect") { capture.disconnectReceiver() }
                                 .disabled(capture.state.recording || capture.requesting)
@@ -34,6 +37,8 @@ struct PhoneMicApp: App {
                         LabeledContent("Session", value: String(format: "%.0f s", capture.streamState.sessionSeconds))
                         LabeledContent("Control RTT", value: capture.streamState.rttMS.map { String(format: "%.2f ms", $0) } ?? "Not measured")
                         LabeledContent("Sent packets", value: "\(capture.streamState.packets)")
+                        LabeledContent("Backup packets", value: "\(capture.streamState.redundantPackets)")
+                        LabeledContent("Skipped backups", value: "\(capture.streamState.skippedCopies)")
                         LabeledContent("Network queue drops", value: "\(capture.streamState.droppedFrames) frames")
                         LabeledContent("Send errors", value: "\(capture.streamState.sendErrors)")
                         LabeledContent("Reconnects", value: "\(capture.streamState.reconnects)")

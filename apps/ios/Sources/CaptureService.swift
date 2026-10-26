@@ -396,6 +396,9 @@ final class CaptureService {
                             report["network_completed"] = true
                             report["network_packets_sent"] = network.packets
                             report["network_bytes_sent"] = network.bytes
+                            report["network_packet_protection"] = network.protectionEnabled
+                            report["network_redundant_packets_sent"] = network.redundantPackets
+                            report["network_redundant_packets_skipped"] = network.skippedCopies
                             report["network_dropped_frames"] = network.droppedFrames
                             report["network_send_errors"] = network.sendErrors
                             report["network_reconnects"] = network.reconnects
