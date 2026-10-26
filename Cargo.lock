@@ -656,6 +656,7 @@ dependencies = [
  "rand",
  "rustls",
  "serde_json",
+ "socket2",
 ]
 
 [[package]]

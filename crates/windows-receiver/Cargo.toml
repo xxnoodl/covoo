@@ -15,6 +15,7 @@ qrcode = { version = "0.14", default-features = false, features = ["svg"] }
 hound = "3.5"
 serde_json = "1"
 rand = "0.8.5"
+socket2 = "0.6.5"
 
 [lints]
 workspace = true

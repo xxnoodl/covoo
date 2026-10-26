@@ -53,6 +53,7 @@ struct Active {
     sender: mpsc::SyncSender<AudioPacket>,
     metrics: Arc<Mutex<Metrics>>,
     last_timing: Option<(u64, Instant, u64)>,
+    last_arrival: Option<Instant>,
 }
 
 pub struct Server {
@@ -71,6 +72,10 @@ impl Server {
         let listener = TcpListener::bind(address)?;
         let address = listener.local_addr()?;
         let udp = UdpSocket::bind(address)?;
+        // Per-socket capacity, not a jitter target or a system-wide setting.
+        let socket = socket2::SockRef::from(&udp);
+        socket.set_recv_buffer_size(256 * 1024)?;
+        println!("UDP receive buffer: {} bytes", socket.recv_buffer_size()?);
         listener.set_nonblocking(true)?;
         udp.set_read_timeout(Some(Duration::from_millis(20)))?;
         Ok(Self {
@@ -270,6 +275,7 @@ fn control(
                         sender,
                         metrics: metrics.clone(),
                         last_timing: None,
+                        last_arrival: None,
                     });
                     recording = Some((worker, metrics, sample_rate));
                     write_message(
@@ -329,6 +335,7 @@ fn control(
 }
 
 fn udp_loop(socket: UdpSocket, registry: Arc<Mutex<Option<Active>>>, stop: Arc<AtomicBool>) {
+    let receive_buffer = socket2::SockRef::from(&socket).recv_buffer_size().ok();
     let mut bytes = [0; secure::MAX_DATAGRAM + 1];
     let mut samples = [0.0; audio_protocol::MAX_FRAMES];
     while !stop.load(Ordering::Relaxed) {
@@ -356,10 +363,25 @@ fn udp_loop(socket: UdpSocket, registry: Arc<Mutex<Option<Active>>>, stop: Arc<A
             continue;
         }
         let mut stats = active.metrics.lock().unwrap();
+        stats.udp_receive_buffer_bytes = receive_buffer;
         let plain = match active.crypto.open(&bytes[..length]) {
             Ok(value) => value,
             Err(PacketError::Replay) => {
                 stats.replay += 1;
+                stats.duplicate += 1;
+                stats.packet_event(
+                    u64::from_le_bytes(bytes[12..20].try_into().unwrap()),
+                    "duplicate",
+                );
+                continue;
+            }
+            Err(PacketError::TooOld) => {
+                stats.replay += 1;
+                stats.too_old += 1;
+                stats.packet_event(
+                    u64::from_le_bytes(bytes[12..20].try_into().unwrap()),
+                    "outside_replay_window",
+                );
                 continue;
             }
             Err(_) => {
@@ -385,7 +407,23 @@ fn udp_loop(socket: UdpSocket, registry: Arc<Mutex<Option<Active>>>, stop: Arc<A
                 continue;
             }
         };
+        if let Some(last_arrival) = active.last_arrival {
+            stats.max_receive_gap_ms = stats.max_receive_gap_ms.max(
+                arrival
+                    .saturating_duration_since(last_arrival)
+                    .as_secs_f64()
+                    * 1000.0,
+            );
+        }
+        active.last_arrival = Some(arrival);
         if let Some((last_counter, last_arrival, last_capture)) = active.last_timing {
+            if counter < last_counter {
+                stats.out_of_order += 1;
+                stats.packet_event(counter, "out_of_order");
+            } else if counter > last_counter + 1 {
+                stats.max_counter_gap = stats.max_counter_gap.max(counter - last_counter - 1);
+                stats.packet_event(counter, "forward_gap_not_yet_confirmed_loss");
+            }
             if counter > last_counter && header.capture_ns > last_capture && last_capture != 0 {
                 let variation = (arrival.duration_since(last_arrival).as_secs_f64()
                     - (header.capture_ns - last_capture) as f64 / 1e9)

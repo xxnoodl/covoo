@@ -20,6 +20,13 @@ pub struct Metrics {
     pub authenticated: u64,
     pub rejected: u64,
     pub replay: u64,
+    pub duplicate: u64,
+    pub too_old: u64,
+    pub out_of_order: u64,
+    pub max_counter_gap: u64,
+    pub max_receive_gap_ms: f64,
+    pub udp_receive_buffer_bytes: Option<usize>,
+    pub packet_events: Vec<serde_json::Value>,
     pub malformed: u64,
     pub queue_drops: u64,
     pub jitter_ms: f64,
@@ -27,6 +34,16 @@ pub struct Metrics {
     pub final_first: u64,
     pub final_end: u64,
     pub error: Option<String>,
+}
+
+impl Metrics {
+    pub fn packet_event(&mut self, counter: u64, kind: &str) {
+        // Bounded evidence, never keys, tokens or PCM. Aggregate counters continue.
+        if self.packet_events.len() < 32 {
+            self.packet_events
+                .push(json!({"counter":counter, "kind":kind}));
+        }
+    }
 }
 
 pub struct Recorder {
@@ -224,6 +241,11 @@ impl Recorder {
             "late_packets":self.late, "discontinuities":self.discontinuities,
             "authenticated_datagrams":metrics.authenticated, "rejected_datagrams":metrics.rejected,
             "replay_rejected":metrics.replay, "malformed_packets":metrics.malformed,
+            "authenticated_duplicates":metrics.duplicate, "authenticated_too_old":metrics.too_old,
+            "out_of_order_packets":metrics.out_of_order, "max_forward_counter_gap":metrics.max_counter_gap,
+            "max_receive_gap_ms":metrics.max_receive_gap_ms,
+            "udp_receive_buffer_bytes":metrics.udp_receive_buffer_bytes,
+            "packet_events_first_32":metrics.packet_events,
             "receiver_queue_drops":metrics.queue_drops, "packet_delay_variation_ms":metrics.jitter_ms,
             "sender_final_summary_received":metrics.final_packets.is_some(),
             "sender_summary_valid":summary_valid, "pcm_continuity_verified":continuity,

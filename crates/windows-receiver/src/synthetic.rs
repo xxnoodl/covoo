@@ -190,7 +190,7 @@ pub fn smoke() -> io::Result<()> {
             previous_id = Some(id);
             previous_key = Some(key);
             let mut encryption = secure::Sender::new(&key, id);
-            let count = if stream == 0 { 120 } else { 20 };
+            let count = if stream == 0 { 160 } else { 20 };
             let encrypted: Vec<_> = (0..count)
                 .map(|i| {
                     encryption
@@ -208,7 +208,13 @@ pub fn smoke() -> io::Result<()> {
                 udp.send_to(&encrypted[pair], target)?;
                 thread::sleep(Duration::from_millis(3));
             }
-            udp.send_to(&encrypted[0], target)?;
+            udp.send_to(encrypted.last().unwrap(), target)?;
+            if stream == 0 {
+                udp.send_to(&encrypted[0], target)?;
+            }
+            let mut forged_duplicate = encrypted.last().unwrap().clone();
+            *forged_duplicate.last_mut().unwrap() ^= 1;
+            udp.send_to(&forged_duplicate, target)?;
             write_message(&mut tls, &Message::Ping { id: 9 })?;
             assert!(matches!(read_message(&mut tls)?, Message::Pong { id: 9 }));
             write_message(
@@ -235,8 +241,13 @@ pub fn smoke() -> io::Result<()> {
                 serde_json::from_slice(&std::fs::read(base.with_extension("json"))?)?;
             assert_eq!(report["packets_not_written"], 0);
             assert_eq!(report["pcm_continuity_verified"], true);
-            assert_eq!(report["rejected_datagrams"], 1);
-            assert_eq!(report["replay_rejected"], 1);
+            assert_eq!(report["rejected_datagrams"], 2);
+            assert_eq!(report["authenticated_duplicates"], 1);
+            assert_eq!(report["authenticated_too_old"], u64::from(stream == 0));
+            assert_eq!(report["replay_rejected"], if stream == 0 { 2 } else { 1 });
+            assert_eq!(report["out_of_order_packets"], count / 2);
+            assert!(report["udp_receive_buffer_bytes"].as_u64().unwrap() > 0);
+            assert!(report["packet_events_first_32"].as_array().unwrap().len() <= 32);
             drop(wav);
             for ext in ["wav", "json", "csv"] {
                 std::fs::remove_file(base.with_extension(ext))?;

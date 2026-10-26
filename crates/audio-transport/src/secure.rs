@@ -12,6 +12,7 @@ pub enum PacketError {
     Session,
     Authentication,
     Replay,
+    TooOld,
     Exhausted,
 }
 
@@ -89,14 +90,6 @@ impl Receiver {
         if counter == u64::MAX {
             return Err(PacketError::Exhausted);
         }
-        if let Some(highest) = self.highest {
-            if counter <= highest {
-                let age = highest - counter;
-                if age >= 128 || self.seen & (1u128 << age) != 0 {
-                    return Err(PacketError::Replay);
-                }
-            }
-        }
         let mut nonce = [0; 12];
         nonce[4..].copy_from_slice(&counter.to_le_bytes());
         let plain = self
@@ -109,6 +102,19 @@ impl Receiver {
                 },
             )
             .map_err(|_| PacketError::Authentication)?;
+        // Authenticate rejection diagnostics too: forged counters must not be
+        // reported as real duplicates or stale packets. Never deliver either.
+        if let Some(highest) = self.highest {
+            if counter <= highest {
+                let age = highest - counter;
+                if age >= 128 {
+                    return Err(PacketError::TooOld);
+                }
+                if self.seen & (1u128 << age) != 0 {
+                    return Err(PacketError::Replay);
+                }
+            }
+        }
         // Authenticate before committing replay state.
         match self.highest {
             None => {
@@ -164,7 +170,16 @@ mod tests {
         assert_eq!(rx.open(&packets[0]).unwrap(), b"test PCM");
         assert_eq!(rx.open(&packets[0]), Err(PacketError::Replay));
         rx.open(&packets[131]).unwrap();
-        assert_eq!(rx.open(&packets[2]), Err(PacketError::Replay));
+        assert_eq!(rx.open(&packets[2]), Err(PacketError::TooOld));
+        let mut forged_duplicate = packets[131].clone();
+        *forged_duplicate.last_mut().unwrap() ^= 1;
+        assert_eq!(rx.open(&forged_duplicate), Err(PacketError::Authentication));
+        let mut forged_old = packets[2].clone();
+        *forged_old.last_mut().unwrap() ^= 1;
+        assert_eq!(rx.open(&forged_old), Err(PacketError::Authentication));
+        // Age 127 is inside the window; age 128 is outside it.
+        assert_eq!(rx.open(&packets[4]).unwrap(), b"test PCM");
+        assert_eq!(rx.open(&packets[3]), Err(PacketError::TooOld));
         assert_eq!(
             Receiver::new(&[8; 32], 42).open(&packets[3]),
             Err(PacketError::Authentication)
