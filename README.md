@@ -1,7 +1,7 @@
 # PhoneMic
 
-iPhone mic for Windows and DAWs. M1 adds local iPhone test recordings.
-Device validation is pending. Streaming isn't implemented yet.
+iPhone mic for Windows and DAWs. Local iPhone recording passed M1 validation.
+Wi-Fi streaming is next. The covoo display-name change is planned for M2.
 
 Run the Windows checks:
 

@@ -1,6 +1,6 @@
-# PhoneMic engineering rules
+# covoo engineering rules
 
-Implement milestones in order; M0 passed and M1 is in progress. Stop at physical acceptance gates
+Implement milestones in order; M0 and M1 passed. M2 is next. Stop at physical acceptance gates
 until the user confirms results. Never claim unperformed CI or hardware checks.
 
 Keep transport, protocol, capture, clocks, buffering and endpoint integration
@@ -13,3 +13,10 @@ Keep diagnostics truthful and document blockers in docs/milestones.
 
 Keep the README, commit messages and updates short. Use plain wording and normal
 punctuation. Put detailed setup and milestone reports in docs.
+
+The product name is covoo. Apply the user-facing rename in M2; PhoneMic is the
+historical working name. See docs/milestones/M2.md.
+
+M8 is deferred research into optional audio enhancement and microphone modeling.
+See docs/milestones/M8.md. Don't implement it during the existing milestones or
+promise near-perfect microphone matching without controlled reference tests.
