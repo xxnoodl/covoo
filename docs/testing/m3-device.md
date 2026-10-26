@@ -2,6 +2,10 @@
 
 Stage A uses an external virtual audio cable. This isn't the native covoo mic.
 The current protected iPhone build is compatible; no new iPhone install needed.
+The later automatic-discard build adds Keep recording on phone. Enable it before
+validation takes if a phone reference/export is needed. Otherwise new streaming
+phone copies are deleted after stopping, even if receiver finalization fails.
+Local-only recording always saves. PC/DAW copies need separate deletion.
 
 ## Install the temporary endpoint
 

@@ -45,12 +45,15 @@ struct PhoneMicApp: App {
                     }
                     Section("Local recording") {
                         Text(capture.state.status)
+                        Toggle("Keep recording on phone", isOn: $capture.keepRecordingOnPhone)
+                            .disabled(capture.state.recording || capture.requesting)
+                        Text("Streaming takes are discarded from this phone after stopping unless enabled. PC and DAW copies are separate. Local-only recordings are kept.").font(.caption)
                         if capture.state.recording {
                             Button("Stop recording") { capture.stop() }
                         } else {
                             Button("Record microphone") { capture.start() }
                                 .disabled(capture.requesting)
-                            Button("Stream to PC and record locally") { capture.start(streamToPC: true) }
+                            Button("Stream to PC") { capture.start(streamToPC: true) }
                                 .disabled(capture.requesting || !capture.streamState.connected)
                         }
                         if !capture.state.files.isEmpty {

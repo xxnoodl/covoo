@@ -53,6 +53,8 @@ final class CaptureService {
     private var lastProgress = ProcessInfo.processInfo.systemUptime
     private var lastFrames: UInt64 = 0
     private var streamer: AudioStreamer?
+    private var storage: RecordingStorage?
+    private var keepLocal = true
 
     func routeChanged() {
         worker.async { [self] in
@@ -69,7 +71,7 @@ final class CaptureService {
             + "/\(session.sampleRate)/\(session.ioBufferDuration)/\(session.inputNumberOfChannels)"
     }
 
-    func start(streamer: AudioStreamer? = nil, update: @escaping (CaptureState) -> Void) {
+    func start(streamer: AudioStreamer? = nil, keepLocal: Bool = true, update: @escaping (CaptureState) -> Void) {
         worker.async { [self] in
             publish = update
             guard unit == nil, !state.finalizing else {
@@ -79,6 +81,7 @@ final class CaptureService {
             }
             state = CaptureState()
             self.streamer = streamer
+            self.keepLocal = keepLocal
             events = []
             expectedPosition = 0
             expectedSampleTime = nil
@@ -186,9 +189,16 @@ final class CaptureService {
         state.deviceFormat = "\(device.mSampleRate) Hz, \(device.mChannelsPerFrame) ch, \(device.mBitsPerChannel) bits, flags \(device.mFormatFlags)"
         routeSignature = currentRouteSignature()
 
-        let directory = try FileManager.default.url(for: .documentDirectory, in: .userDomainMask,
-            appropriateFor: nil, create: true)
-        let base = directory.appendingPathComponent("capture-\(UUID().uuidString)")
+        if storage == nil {
+            let documents = try FileManager.default.url(for: .documentDirectory, in: .userDomainMask,
+                appropriateFor: nil, create: true)
+            let caches = try FileManager.default.url(for: .cachesDirectory, in: .userDomainMask,
+                appropriateFor: nil, create: true)
+            storage = try RecordingStorage(documents: documents,
+                temporary: caches.appendingPathComponent("covoo-disposable-recordings-v1", isDirectory: true))
+        }
+        guard let storage else { throw CaptureFailure(message: "Recording storage unavailable") }
+        let base = try storage.begin(keep: keepLocal)
         let wav = base.appendingPathExtension("wav")
         recordingURL = wav
         reportURL = base.appendingPathExtension("json")
@@ -414,12 +424,25 @@ final class CaptureService {
                         try data.write(to: reportURL, options: .atomic)
                     } catch { self.state.status = "Network report failed: \(error.localizedDescription)" }
                     self.state.finalizing = false
+                    self.discardUnsaved()
                     self.emit()
                 }
             }
             return
         }
+        discardUnsaved()
         emit()
+    }
+
+    private func discardUnsaved() {
+        guard !keepLocal else { return }
+        state.files = []
+        do {
+            try storage?.discard()
+            state.status += "; temporary phone files discarded"
+        } catch {
+            state.status += "; temporary file cleanup failed: \(error.localizedDescription)"
+        }
     }
 
     private func emit() {

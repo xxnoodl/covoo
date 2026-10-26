@@ -9,6 +9,7 @@ final class CaptureModel: ObservableObject {
     @Published var streamState = StreamState()
     @Published var pairingLink = ""
     @Published var packetProtection = true
+    @Published var keepRecordingOnPhone = false
     private var streamer: AudioStreamer?
     private let service = CaptureService()
     private var observers: [NSObjectProtocol] = []
@@ -52,7 +53,8 @@ final class CaptureModel: ObservableObject {
                 return
             }
             state.status = "Starting"
-            service.start(streamer: streamToPC ? streamer : nil) { [weak self] value in
+            service.start(streamer: streamToPC ? streamer : nil,
+                keepLocal: !streamToPC || keepRecordingOnPhone) { [weak self] value in
                 Task { @MainActor in
                     self?.state = value
                     self?.requesting = value.finalizing
