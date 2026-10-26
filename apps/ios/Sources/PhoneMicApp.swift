@@ -3,14 +3,41 @@ import SwiftUI
 @main
 struct PhoneMicApp: App {
     @StateObject private var capture = CaptureModel()
+    @StateObject private var discovery = ReceiverDiscovery()
     private var productName: String {
-        Bundle.main.object(forInfoDictionaryKey: "CFBundleDisplayName") as? String ?? "PhoneMic"
+        Bundle.main.object(forInfoDictionaryKey: "CFBundleDisplayName") as? String ?? "covoo"
     }
 
     var body: some Scene {
         WindowGroup {
             NavigationStack {
                 List {
+                    Section("Windows receiver") {
+                        Button("Find receivers") { discovery.start() }
+                        Text(discovery.status).font(.caption)
+                        ForEach(discovery.names, id: \.self) { Text($0) }
+                        SecureField("Pairing link from receiver", text: $capture.pairingLink)
+                            .textInputAutocapitalization(.never)
+                            .autocorrectionDisabled()
+                            .disabled(capture.state.recording || capture.requesting)
+                        Text("Scan the receiver QR with Camera, or paste its pairing link here.").font(.caption)
+                        if capture.streamState.connected {
+                            Button("Disconnect") { capture.disconnectReceiver() }
+                                .disabled(capture.state.recording || capture.requesting)
+                        } else {
+                            Button("Connect") { capture.connectReceiver() }
+                                .disabled(capture.state.recording || capture.requesting)
+                        }
+                        Text(capture.streamState.status)
+                        LabeledContent("Receiver", value: capture.streamState.receiver)
+                        LabeledContent("Transport", value: capture.streamState.transport)
+                        LabeledContent("Session", value: String(format: "%.0f s", capture.streamState.sessionSeconds))
+                        LabeledContent("Control RTT", value: capture.streamState.rttMS.map { String(format: "%.2f ms", $0) } ?? "Not measured")
+                        LabeledContent("Sent packets", value: "\(capture.streamState.packets)")
+                        LabeledContent("Network queue drops", value: "\(capture.streamState.droppedFrames) frames")
+                        LabeledContent("Send errors", value: "\(capture.streamState.sendErrors)")
+                        LabeledContent("Reconnects", value: "\(capture.streamState.reconnects)")
+                    }
                     Section("Local recording") {
                         Text(capture.state.status)
                         if capture.state.recording {
@@ -18,6 +45,8 @@ struct PhoneMicApp: App {
                         } else {
                             Button("Record microphone") { capture.start() }
                                 .disabled(capture.requesting)
+                            Button("Stream to PC and record locally") { capture.start(streamToPC: true) }
+                                .disabled(capture.requesting || !capture.streamState.connected)
                         }
                         if !capture.state.files.isEmpty {
                             ShareLink(items: capture.state.files) { Text("Share recording and report") }
@@ -43,11 +72,12 @@ struct PhoneMicApp: App {
                         LabeledContent("Discontinuities", value: "\(capture.state.discontinuities)")
                         LabeledContent("Max callback work", value: capture.state.callbacks > 0 ? String(format: "%.3f ms", capture.state.maxCallbackMS) : "Not measured")
                         Text("Callback work is software timing, not input latency.")
-                        Text("Keep the app open. Locking or backgrounding stops M1 recording.")
-                        Text("Streaming is not implemented.")
+                        Text("Keep the app open. Locking or backgrounding stops recording.")
+                        Text("The PC saves a WAV. Windows microphone routing comes in M3.")
                     }
                 }
                 .navigationTitle(productName)
+                .onOpenURL { capture.acceptPairingURL($0) }
             }
         }
     }

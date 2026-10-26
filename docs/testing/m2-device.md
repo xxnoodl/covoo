@@ -1,0 +1,39 @@
+# M2 phone to PC check
+
+M1 passed. M2 physical acceptance is pending; no Windows microphone endpoint yet.
+
+1. Install the new `covoo-unsigned.ipa` using iloader as before. The iPhone display
+   name should now be covoo. Allow Local Network access when asked.
+2. Extract `covoo-windows-x64` on the PC and double-click `start-receiver.cmd`.
+   Keep that console open. If Windows asks, allow the receiver on your private
+   network. No driver installation or automatic firewall change is involved.
+3. Open `recordings/pairing.html` in that folder. Scan the QR with iPhone Camera,
+   open it in covoo and tap Connect. Both devices must reach each other on the
+   same LAN; guest/client-isolated Wi-Fi may block this.
+4. Tap Find receivers to check discovery. The name should appear. The QR is still
+   required for authentication; discovery alone never establishes trust.
+5. Tap Stream to PC and record locally. Speak/clap periodically for five minutes.
+   Keep the app open/unlocked. Check packets increase on phone and PC.
+6. Stop in covoo. Wait for "receiver recording saved" before closing the receiver.
+   Keep the phone's exported WAV/JSON/CSV and the PC's matching WAV/JSON/CSV.
+   Don't share pairing.html or the pairing link: they contain a session secret.
+7. Play the PC WAV. Confirm real microphone audio, intelligible sound and no
+   unexplained corruption. Supply both sets of reports and recordings for comparison.
+8. In a separate run, turn Wi-Fi off briefly, restore it, and verify automatic
+   reconnection. Expect a new PC WAV segment and explicit dropped/reconnect counters,
+   not continuity through the outage. Stop and keep all segment reports.
+
+Passing continuity run: receiver `pcm_continuity_verified=true`, sender final
+summary received, zero `packets_not_written`, queue drops, inserted silence and
+discontinuities. Phone capture/network drop and error counters should be zero.
+Physically compare phone/PC samples; software tests don't replace this step.
+Control RTT is a round trip, not one-way input or end-to-end monitoring latency.
+
+If pairing cannot connect, check permission under iOS Settings > covoo > Local
+Network and check the PC's private-network firewall prompt. If multiple adapters
+or a VPN select the wrong address, run `start-receiver.cmd --host YOUR_LAN_IPV4`.
+Restarting the receiver changes its certificate/token and requires a fresh QR.
+Current pairing isn't persisted across app restart. Receiver exits after one hour
+by default; use `--seconds 7200` if a longer explicit test is wanted.
+
+No M3 work starts until these physical acceptance results are confirmed.

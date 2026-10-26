@@ -6,6 +6,9 @@ import UIKit
 final class CaptureModel: ObservableObject {
     @Published var state = CaptureState()
     @Published var requesting = false
+    @Published var streamState = StreamState()
+    @Published var pairingLink = ""
+    private var streamer: AudioStreamer?
     private let service = CaptureService()
     private var observers: [NSObjectProtocol] = []
 
@@ -32,7 +35,7 @@ final class CaptureModel: ObservableObject {
         })
     }
 
-    func start() {
+    func start(streamToPC: Bool = false) {
         guard !requesting, !state.recording else { return }
         requesting = true
         state.status = "Requesting microphone access"
@@ -48,7 +51,7 @@ final class CaptureModel: ObservableObject {
                 return
             }
             state.status = "Starting"
-            service.start { [weak self] value in
+            service.start(streamer: streamToPC ? streamer : nil) { [weak self] value in
                 Task { @MainActor in
                     self?.state = value
                     self?.requesting = false
@@ -58,6 +61,35 @@ final class CaptureModel: ObservableObject {
     }
 
     func stop() { service.stop() }
+
+    func acceptPairingURL(_ url: URL) {
+        guard !state.recording, !requesting else { return }
+        do {
+            _ = try PairingDetails(link: url.absoluteString)
+            pairingLink = url.absoluteString
+            streamState.status = "Pairing link received. Tap Connect."
+        } catch { streamState.status = error.localizedDescription }
+    }
+
+    func connectReceiver() {
+        guard !state.recording, !requesting else { return }
+        do {
+            let pairing = try PairingDetails(link: pairingLink)
+            streamer?.disconnect()
+            let transport = try AudioStreamer(pairing: pairing) { [weak self] value in
+                Task { @MainActor in self?.streamState = value }
+            }
+            streamer = transport
+            transport.connect()
+        } catch { streamState.status = error.localizedDescription }
+    }
+
+    func disconnectReceiver() {
+        guard !state.recording, !requesting else { return }
+        streamer?.disconnect()
+        streamer = nil
+        streamState = StreamState()
+    }
 
     deinit { for observer in observers { NotificationCenter.default.removeObserver(observer) } }
 }

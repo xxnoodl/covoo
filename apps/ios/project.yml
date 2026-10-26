@@ -5,7 +5,7 @@ options:
 settings:
   base:
     SWIFT_VERSION: "5.0"
-    PRODUCT_DISPLAY_NAME: PhoneMic
+    PRODUCT_DISPLAY_NAME: covoo
     PRODUCT_BUNDLE_IDENTIFIER: org.example.phonemic
     MARKETING_VERSION: "0.1.0"
     CURRENT_PROJECT_VERSION: "1"
@@ -22,6 +22,11 @@ targets:
       properties:
         CFBundleDisplayName: $(PRODUCT_DISPLAY_NAME)
         NSMicrophoneUsageDescription: Record your microphone to a local test WAV file.
+        NSLocalNetworkUsageDescription: Find your covoo receiver and stream microphone audio privately over your local network.
+        NSBonjourServices: ["_covoo._tcp"]
+        CFBundleURLTypes:
+          - CFBundleURLName: covoo.pairing
+            CFBundleURLSchemes: [covoo]
         UIFileSharingEnabled: true
         LSSupportsOpeningDocumentsInPlace: true
         UILaunchScreen: {}
@@ -32,7 +37,10 @@ targets:
   PhoneMicTests:
     type: bundle.unit-test
     platform: iOS
-    sources: [Tests]
+    sources:
+      - path: Tests
+      - path: ../../tests/interoperability/secure_packet.json
+        buildPhase: resources
     dependencies:
       - target: PhoneMic
     settings:

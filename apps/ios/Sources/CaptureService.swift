@@ -51,6 +51,7 @@ final class CaptureService {
     private var routeSignature = ""
     private var lastProgress = ProcessInfo.processInfo.systemUptime
     private var lastFrames: UInt64 = 0
+    private var streamer: AudioStreamer?
 
     func routeChanged() {
         worker.async { [self] in
@@ -67,7 +68,7 @@ final class CaptureService {
             + "/\(session.sampleRate)/\(session.ioBufferDuration)/\(session.inputNumberOfChannels)"
     }
 
-    func start(update: @escaping (CaptureState) -> Void) {
+    func start(streamer: AudioStreamer? = nil, update: @escaping (CaptureState) -> Void) {
         worker.async { [self] in
             publish = update
             guard unit == nil else {
@@ -76,6 +77,7 @@ final class CaptureService {
                 return
             }
             state = CaptureState()
+            self.streamer = streamer
             events = []
             expectedPosition = 0
             expectedSampleTime = nil
@@ -94,7 +96,7 @@ final class CaptureService {
 
     func stop(reason: String = "Stopped") {
         worker.async { [self] in
-            guard state.recording else { return }
+            guard state.recording || unit != nil else { return }
             finish(reason: reason)
         }
     }
@@ -207,10 +209,26 @@ final class CaptureService {
         try timeline?.write(contentsOf: Data("sequence,sample_position,host_ticks,sample_time,time_flags,frames,render_ticks\n".utf8))
         events.append("RemoteIO mono Float32 client format, measurement mode, no voice processing unit")
         events.append("maximum_frames_per_slice=\(maximum)")
+        if let streamer {
+            state.status = "Starting stream"
+            streamer.begin(sampleRate: UInt32(state.sampleRate)) { [weak self] result in
+                guard let self else { return }
+                self.worker.async {
+                    guard self.unit != nil, self.file != nil else { return }
+                    do { try result.get(); try self.startInput() }
+                    catch { self.finish(reason: "Stream start failed: \(error.localizedDescription)") }
+                }
+            }
+        } else { try startInput() }
+    }
+
+    private func startInput() throws {
+        guard let unit else { throw CaptureFailure(message: "Capture was cancelled") }
+        guard currentRouteSignature() == routeSignature else { throw CaptureFailure(message: "Audio route changed during startup. Start again.") }
         startedAt = Date()
         lastProgress = ProcessInfo.processInfo.systemUptime
         lastFrames = 0
-        try check(AudioOutputUnitStart(instance), "Start input")
+        try check(AudioOutputUnitStart(unit), "Start input")
         state.recording = true
         state.status = "Recording"
         let timer = DispatchSource.makeTimerSource(queue: worker)
@@ -250,6 +268,7 @@ final class CaptureService {
             state.rmsDB = 20 * log10(max(1e-6, sqrt(sum / Double(info.frames))))
             state.peakDB = 20 * log10(max(1e-6, peak))
             buffer.frameLength = info.frames
+            streamer?.submit(samples, info: info)
             try file.write(from: buffer)
             state.frames += UInt64(info.frames)
             let row = "\(info.sequence),\(info.sample_position),\(info.host_time),\(info.sample_time),\(info.time_flags),\(info.frames),\(info.callback_ticks)\n"
@@ -306,6 +325,7 @@ final class CaptureService {
             do { try drain() } catch { events.append("Final drain failed: \(error.localizedDescription)") }
         }
         updateCounters()
+        streamer?.end()
         let finalStats = capture.map { pm_capture_stats($0) }
         // Releasing the last AVAudioFile reference finalizes the WAV header.
         file = nil
@@ -336,7 +356,7 @@ final class CaptureService {
             let report: [String: Any] = ["sample_rate_hz": state.sampleRate,
                 "actual_io_buffer_ms": state.bufferMS, "actual_input_channels": state.hardwareChannels,
                 "input": state.input, "device_side_format": state.deviceFormat,
-                "client_format": "mono Float32", "wire_transport": "not implemented",
+                "client_format": "mono Float32", "wire_transport": streamer == nil ? "off" : "TLS control + encrypted UDP",
                 "frames_written": state.frames, "duration_from_written_frames_seconds": state.sampleRate > 0 ? Double(state.frames) / state.sampleRate : 0,
                 "wall_duration_seconds": startedAt.map { Date().timeIntervalSince($0) } ?? 0,
                 "callbacks": state.callbacks, "render_errors": state.renderErrors,

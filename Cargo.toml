@@ -1,5 +1,5 @@
 [workspace]
-members = ["crates/audio-core", "crates/audio-protocol", "crates/windows-receiver"]
+members = ["crates/audio-core", "crates/audio-protocol", "crates/audio-transport", "crates/windows-receiver"]
 resolver = "3"
 
 [workspace.package]

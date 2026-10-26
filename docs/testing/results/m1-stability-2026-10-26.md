@@ -13,6 +13,10 @@ Python independently checked the full RIFF payload and every CSV row.
   oversized callbacks and discontinuities.
 - All samples finite, nonzero audio present, no samples at or above full scale.
 - RMS -50.79 dBFS; peak -13.52 dBFS. These describe this take, not microphone quality.
+- Follow-up 100 ms RMS analysis: median -71.91 dBFS, 95th percentile -44.64 dBFS,
+  99th percentile -36.64 dBFS and loudest window -28.12 dBFS. Whole-take RMS
+  includes quiet intervals and isn't an isolated vocal loudness measurement.
+  Quiet windows aren't a calibrated microphone self-noise or SNR measurement.
 - Longest exact-zero span: 2.69 ms. This isn't a test for perceptual artifacts.
 - Queue high water two blocks; empty at stop.
 - Actual I/O buffer reported as 5 ms. Maximum successful callback work reported

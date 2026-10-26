@@ -22,11 +22,19 @@ jobs:
       - run: cargo test --workspace --locked
       - run: cargo build --workspace --release --locked
       - run: cargo run -p windows-receiver --locked
+      - run: cargo run --release --locked -p audio-transport --example crypto_bench
+      - name: Package Windows receiver
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force build/windows | Out-Null
+          Copy-Item target/release/windows-receiver.exe build/windows/covoo-receiver.exe
+          Copy-Item scripts/start-receiver.cmd build/windows/start-receiver.cmd
       - uses: actions/upload-artifact@v4
         if: runner.os == 'Windows'
         with:
-          name: windows-receiver-x64
-          path: target/release/windows-receiver.exe
+          name: covoo-windows-x64
+          path: build/windows/*
           if-no-files-found: error
   ios:
     timeout-minutes: 30
@@ -38,6 +46,8 @@ jobs:
       - uses: actions/checkout@v4
       - name: Test native queue
         run: bash ../../scripts/test-native.sh
+      - name: Test Swift to Rust network path
+        run: bash ../../scripts/test-swift-network.sh
       - name: Tool versions
         run: |
           xcodebuild -version
@@ -58,14 +68,14 @@ jobs:
         run: bash ../../scripts/package-ios.sh
       - uses: actions/upload-artifact@v4
         with:
-          name: ios-sideload-package
-          path: build/PhoneMic-unsigned.ipa
+          name: covoo-ios-sideload-package
+          path: build/covoo-unsigned.ipa
           if-no-files-found: error
           retention-days: 7
       - uses: actions/upload-artifact@v4
         if: always()
         with:
-          name: ios-unsigned-build-and-logs
+          name: covoo-ios-build-and-logs
           path: |
             build/ios-*.log
             build/*.xcresult

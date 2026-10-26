@@ -1,7 +1,7 @@
-# PhoneMic
+# covoo
 
-iPhone mic for Windows and DAWs. Local iPhone recording passed M1 validation.
-Wi-Fi streaming is next. The covoo display-name change is planned for M2.
+iPhone mic for Windows and DAWs. M1 capture passed. M2 adds encrypted LAN
+streaming to a Windows WAV receiver; phone-to-PC validation is pending.
 
 Run the Windows checks:
 
@@ -11,4 +11,4 @@ powershell -File scripts/verify.ps1
 
 Needs Rust and MSVC C++ Build Tools. GitHub Actions builds iOS on a Mac runner.
 
-[Build setup](docs/testing/builds.md) | [Install on iPhone](docs/testing/windows-install.md) | [Status](docs/milestones/M1.md)
+[Build setup](docs/testing/builds.md) | [Phone-to-PC test](docs/testing/m2-device.md) | [Status](docs/milestones/M2.md)

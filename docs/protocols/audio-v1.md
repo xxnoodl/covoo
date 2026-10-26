@@ -1,6 +1,7 @@
-# Provisional audio codec v1 (M0, not network approved)
+# Audio codec v1
 
-Mono IEEE 754 Float32 little-endian, 8–192 kHz, 1–1024 frames. The receiver
+Mono IEEE 754 Float32 little-endian, 8–192 kHz, 1–1024 frames. M2 permits at most
+240 frames inside its authenticated envelope; raw v1 is never sent directly. The receiver
 rejects nonfinite samples, unknown versions/flags, bad lengths and invalid formats.
 No clipping of finite samples. Packet size must equal 40 + frames * 4.
 1024 frames is a codec limit, not a recommended UDP packet size; M2 must budget
@@ -24,7 +25,8 @@ Sample positions count frames within the stream. Timestamp origins belong to
 the sender only. M0 stores metadata but does not implement sequence tracking,
 negotiation, loss recovery, or clock mapping. Receiver timing must never subtract
 unmapped cross-device timestamps. Format agreement, replay protection, stream
-identity authentication and control messages are deferred to M2.
+identity authentication and control messages are provided by the separate M2
+TLS/UDP layer. See docs/decisions/0003-secure-lan.md and docs/security/m2-threat-model.md.
 
 encode/decode use caller-owned storage and return explicit errors. decode
 validates the complete packet before mutating output; only frame-count samples

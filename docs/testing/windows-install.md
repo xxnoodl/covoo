@@ -7,20 +7,25 @@ route; GitHub's Mac runner compiles the app and AltServer signs it locally.
 1. Install [AltServer for Windows](https://faq.altstore.io/altstore-classic/how-to-install-altstore-windows).
    Follow its Apple iTunes/iCloud requirements. Don't uninstall or replace
    existing Apple software unless its guide requires it for your setup.
-2. In the latest successful GitHub Actions run, download `ios-sideload-package`.
-   Extract the downloaded ZIP to get `PhoneMic-unsigned.ipa`.
+2. In the latest successful GitHub Actions run, download `covoo-ios-sideload-package`.
+   Extract the downloaded ZIP to get `covoo-unsigned.ipa`.
 3. Connect and unlock your iPhone, then trust the PC. Open AltServer.
 4. Hold Shift while clicking its tray icon, choose `Sideload .ipa`, select your
    phone and the IPA. Sign in directly in AltServer when prompted.
 5. Trust your developer app under Settings > General > VPN & Device Management.
    Enable Developer Mode under Privacy & Security if prompted, then restart and confirm.
-6. Open PhoneMic and run the [recording check](m1-device.md).
+6. Open covoo and run the [M2 check](m2-device.md).
 
 The IPA is unsigned input for the signing tool, not an installable signed build.
 AltServer's direct install needs reinstalling/refreshing after 7 days with a free
 account. Account limits and signing-service failures can block installation.
 This is only a development installation tool, not an audio transport dependency.
 Keep Apple credentials in the local signing app, not GitHub secrets or chat.
+
+On this test setup AltServer failed with -80046; the user installed successfully
+using [iloader](https://iloader.app/). It can import the same unsigned IPA and
+sign it locally using the regular Apple account. It doesn't require installing
+SideStore or LiveContainer just to import our IPA.
 
 If it fails, report the exact error and your iOS version. No jailbreak, paid
 signing service, MFi hardware or system security bypass is part of this route.

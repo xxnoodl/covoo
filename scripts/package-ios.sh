@@ -17,10 +17,10 @@ stage=$(mktemp -d "$PWD/build/ipa-stage.XXXXXX")
 trap 'rm -rf "$stage"' EXIT
 mkdir "$stage/Payload"
 ditto "$app" "$stage/Payload/PhoneMic.app"
-ditto -c -k --keepParent --norsrc "$stage/Payload" build/PhoneMic-unsigned.ipa
+ditto -c -k --keepParent --norsrc "$stage/Payload" build/covoo-unsigned.ipa
 python3 - <<'PY'
 import plistlib, zipfile
-with zipfile.ZipFile('build/PhoneMic-unsigned.ipa') as archive:
+with zipfile.ZipFile('build/covoo-unsigned.ipa') as archive:
     assert archive.testzip() is None
     info = plistlib.loads(archive.read('Payload/PhoneMic.app/Info.plist'))
     assert 'Payload/PhoneMic.app/' + info['CFBundleExecutable'] in archive.namelist()
