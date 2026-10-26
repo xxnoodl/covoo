@@ -1,7 +1,7 @@
 # covoo
 
 iPhone mic for Windows and DAWs. Protected Wi-Fi audio verified.
-M3 adds live Windows output; virtual cable and DAW validation are pending.
+M3 DAW routing and repeated takes confirmed. Recovery and latency checks continue.
 
 Run the Windows checks:
 
