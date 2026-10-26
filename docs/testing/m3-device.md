@@ -36,6 +36,9 @@ Windows microphone permissions allow the DAW as a desktop app.
    rate, queue occupancy, underruns/overruns and output errors. A missing/failed
    endpoint is an error; covoo never silently falls back to speakers.
 
+The receiver currently exits after one hour by default. For a longer explicit
+session use `start-daw.cmd --seconds 14400` (four hours, maximum 24 hours).
+
 `start-receiver.cmd` still records WAV only. Choosing a real headphone endpoint
 instead of CABLE Input is an explicit playback check, not a virtual mic test.
 Don't choose speakers near the phone while monitoring; that can feed back.
