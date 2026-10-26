@@ -21,7 +21,9 @@ Limits: 1200-byte datagrams, 4096-byte control records, four pending control
 connections, one authenticated control owner, 64 sender PCM blocks, eight in-flight
 sends, 64 received packets queued to disk and 16 reorder slots. Sender drops blocks
 older than 100 ms; receiver reorder wait is 20 ms. These are M2 bounds, not a measured
-latency promise. TLS/socket timeouts and heartbeats bound ordinary connection stalls.
+latency promise. A five-second whole-record/handshake read deadline also rejects
+peers that trickle bytes instead of completing control records. Socket write
+timeouts and heartbeats bound ordinary connection stalls.
 This is not a denial-of-service-proof service; untrusted hosts on the LAN can
 still consume network/handshake resources. Do not expose the listener on the internet.
 

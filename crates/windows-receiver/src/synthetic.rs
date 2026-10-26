@@ -43,12 +43,36 @@ fn client(
     Ok(rustls::StreamOwned::new(connection, socket))
 }
 
-fn expected_sample(position: u64) -> f32 {
-    ((position % 31) as f32 - 15.0) / 32.0
+fn expected_sample(position: u64, rate: u32) -> f32 {
+    match (position / 1200) % 4 {
+        0 => {
+            (std::f64::consts::TAU * 440.0 * position as f64 / f64::from(rate)).sin() as f32 * 0.25
+        }
+        1 => {
+            if position % 1200 == 0 {
+                0.75
+            } else {
+                0.0
+            }
+        }
+        2 => {
+            // Deterministic test noise only. Session secrets always use the OS CSPRNG.
+            let mut value = (position as u32).wrapping_add(0x9e3779b9);
+            value ^= value >> 16;
+            value = value.wrapping_mul(0x85ebca6b);
+            value ^= value >> 13;
+            value = value.wrapping_mul(0xc2b2ae35);
+            value ^= value >> 16;
+            (value as f64 / u32::MAX as f64 - 0.5) as f32 * 0.5
+        }
+        _ => ((position % 31) as f32 - 15.0) / 32.0,
+    }
 }
 
 fn packet(id: u64, sequence: u32, position: u64, rate: u32) -> Vec<u8> {
-    let samples: Vec<_> = (position..position + 240).map(expected_sample).collect();
+    let samples: Vec<_> = (position..position + 240)
+        .map(|p| expected_sample(p, rate))
+        .collect();
     let header = Header {
         discontinuity: false,
         stream_id: id,
@@ -205,7 +229,7 @@ pub fn smoke() -> io::Result<()> {
                 .map_err(io::Error::other)?;
             assert_eq!(samples.len(), count as usize * 240);
             for (i, sample) in samples.iter().enumerate() {
-                assert_eq!(*sample, expected_sample(i as u64));
+                assert_eq!(*sample, expected_sample(i as u64, rate));
             }
             let report: serde_json::Value =
                 serde_json::from_slice(&std::fs::read(base.with_extension("json"))?)?;

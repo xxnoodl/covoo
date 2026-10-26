@@ -18,6 +18,33 @@ use std::{
     time::{Duration, Instant},
 };
 
+/// Bound a complete control record/handshake, including peers that trickle bytes.
+struct DeadlineSocket {
+    stream: TcpStream,
+    deadline: Instant,
+}
+impl io::Read for DeadlineSocket {
+    fn read(&mut self, bytes: &mut [u8]) -> io::Result<usize> {
+        if bytes.is_empty() {
+            return Ok(0);
+        }
+        let remaining = self
+            .deadline
+            .checked_duration_since(Instant::now())
+            .ok_or_else(|| io::Error::new(io::ErrorKind::TimedOut, "control frame deadline"))?;
+        self.stream.set_read_timeout(Some(remaining))?;
+        io::Read::read(&mut self.stream, bytes)
+    }
+}
+impl io::Write for DeadlineSocket {
+    fn write(&mut self, bytes: &[u8]) -> io::Result<usize> {
+        io::Write::write(&mut self.stream, bytes)
+    }
+    fn flush(&mut self) -> io::Result<()> {
+        io::Write::flush(&mut self.stream)
+    }
+}
+
 struct Active {
     id: u64,
     peer: IpAddr,
@@ -178,6 +205,10 @@ fn control(
     stop: Arc<AtomicBool>,
 ) -> io::Result<()> {
     let connection = rustls::ServerConnection::new(config).map_err(io::Error::other)?;
+    let socket = DeadlineSocket {
+        stream: socket,
+        deadline: Instant::now() + Duration::from_secs(5),
+    };
     let mut tls = rustls::StreamOwned::new(connection, socket);
     let hello = read_message(&mut tls)?;
     let authenticated = matches!(&hello,Message::Hello { version:1, token: offered, device } if device.len() <= 128 && token_matches(&token,offered));
@@ -211,6 +242,7 @@ fn control(
     let mut recording = None;
     let result = (|| -> io::Result<()> {
         while !stop.load(Ordering::Relaxed) {
+            tls.sock.deadline = Instant::now() + Duration::from_secs(5);
             let message = read_message(&mut tls)?;
             match message {
                 Message::Ping { id } => write_message(&mut tls, &Message::Pong { id })?,
@@ -383,4 +415,20 @@ pub fn default_host() -> io::Result<IpAddr> {
     // UDP connect only selects a local route. No datagram is sent.
     route.connect((Ipv4Addr::new(192, 0, 2, 1), 9))?;
     Ok(route.local_addr()?.ip())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    #[test]
+    fn expired_control_frame_deadline_cannot_wait_for_more_bytes() {
+        let listener = TcpListener::bind((Ipv4Addr::LOCALHOST, 0)).unwrap();
+        let stream = TcpStream::connect(listener.local_addr().unwrap()).unwrap();
+        let mut socket = DeadlineSocket {
+            stream,
+            deadline: Instant::now() - Duration::from_secs(1),
+        };
+        let error = io::Read::read(&mut socket, &mut [0; 1]).unwrap_err();
+        assert_eq!(error.kind(), io::ErrorKind::TimedOut);
+    }
 }
