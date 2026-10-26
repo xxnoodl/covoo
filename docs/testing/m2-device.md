@@ -3,15 +3,16 @@
 M1 passed. M2 physical acceptance is pending; no Windows microphone endpoint yet.
 
 1. Install the new `covoo-unsigned.ipa` using iloader as before. The iPhone display
-   name should now be covoo. Allow Local Network access when asked.
+   name should now be covoo. Then disconnect USB for this Wi-Fi test; keep the
+   phone on Wi-Fi and the PC on the same LAN. Allow Local Network access when asked.
 2. Extract `covoo-windows-x64` on the PC and double-click `start-receiver.cmd`.
    Keep that console open. If Windows asks, allow the receiver on your private
    network. No driver installation or automatic firewall change is involved.
-3. Open `recordings/pairing.html` in that folder. Scan the QR with iPhone Camera,
-   open it in covoo and tap Connect. Both devices must reach each other on the
-   same LAN; guest/client-isolated Wi-Fi may block this.
-4. Tap Find receivers to check discovery. The name should appear. The QR is still
-   required for authentication; discovery alone never establishes trust.
+3. Tap Find receivers in covoo and allow Local Network access.
+   The receiver name should appear; guest/client-isolated Wi-Fi may block this.
+4. Open `recordings/pairing.html` on the PC. Scan the QR with iPhone Camera,
+   open it in covoo and tap Connect. The QR is required for authentication;
+   discovery alone never establishes trust.
 5. Tap Stream to PC and record locally. Speak/clap periodically for five minutes.
    Keep the app open/unlocked. Check packets increase on phone and PC.
 6. Stop in covoo. Wait for "receiver recording saved" before closing the receiver.
