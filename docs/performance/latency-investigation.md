@@ -134,6 +134,10 @@ electrical reference rig is preferable for final published acceptance testing;
 extra measurement equipment isn't a product requirement for everyday recording.
 
 No physical result from this methodology has been obtained yet.
+Prefer an unprocessed reference-microphone path. Noise suppression or echo
+cancellation can obscure the return; record the reference settings and treat an
+ambiguous/missing echo as inconclusive. Phone I/O duration and timestamp age also
+aren't a complete physical measurement of microphone/ADC latency.
 
 ## Escalation paths after evidence
 
