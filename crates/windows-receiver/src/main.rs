@@ -17,6 +17,11 @@ fn run() -> io::Result<()> {
     if args.iter().any(|a| a == "--list-audio") {
         return windows_receiver::live::list_devices();
     }
+    if let Some(name) = value(&args, "--probe-audio")? {
+        let report = windows_receiver::live::probe_device(name)?;
+        println!("{}", serde_json::to_string_pretty(&report)?);
+        return Ok(());
+    }
     if args.iter().any(|a| a == "--self-test") {
         return windows_receiver::synthetic::smoke();
     }
@@ -26,6 +31,7 @@ fn run() -> io::Result<()> {
             "Usage: windows-receiver --serve [--host LAN_IP] [--port 43110] [--output recordings] [--seconds 3600]"
         );
         println!("Or: windows-receiver --self-test");
+        println!("Probe: --probe-audio EXACT_NAME. Experimental: --audio-backend low-period.");
         println!(
             "Or: --list-audio. Add --audio-device EXACT_NAME [--buffer-ms 40] to --serve for M3 Stage A routing."
         );
@@ -66,6 +72,15 @@ fn run() -> io::Result<()> {
     }
     let mut server = Server::bind(SocketAddr::from((host, port)), output)?;
     if let Some(device) = value(&args, "--audio-device")? {
+        let backend = match value(&args, "--audio-backend")?.unwrap_or("legacy") {
+            "legacy" => windows_receiver::live::AudioBackend::Legacy,
+            "low-period" => windows_receiver::live::AudioBackend::LowPeriod,
+            _ => {
+                return Err(io::Error::other(
+                    "--audio-backend must be legacy or low-period",
+                ));
+            }
+        };
         if !cfg!(windows) {
             return Err(io::Error::other("Audio routing requires Windows"));
         }
@@ -88,9 +103,11 @@ fn run() -> io::Result<()> {
             device: device.into(),
             buffer_ms,
             device_buffer_frames,
+            backend,
         });
     } else if value(&args, "--buffer-ms")?.is_some()
         || value(&args, "--device-buffer-frames")?.is_some()
+        || value(&args, "--audio-backend")?.is_some()
     {
         return Err(io::Error::other(
             "Audio buffer options require --audio-device",

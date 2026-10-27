@@ -45,6 +45,10 @@ def audit(log=None, receiver=None, phone=None):
                 'resampler_delay_output_frames', 'underruns', 'overruns', 'output_errors',
                 'queue_high_water_frames', 'tail_drain_complete']
         keys += ['packet_live_worker_wait_ms_mean', 'packet_live_worker_wait_ms_max']
+        keys += ['backend', 'engine_period_min_frames', 'selected_engine_period_frames',
+                 'actual_engine_period_frames', 'actual_engine_period_ms',
+                 'endpoint_buffer_capacity_frames', 'client_queue_target_frames',
+                 'native_event_gap_ms_max', 'thread_scheduler']
         result['receiver'] = {k: receiver.get(k) for k in keys}
     if phone is not None:
         keys = ['latency_profile', 'actual_io_buffer_ms', 'capture_worker_interval_ms',

@@ -17,6 +17,8 @@ pub struct OutputStats {
     pub high_water: AtomicU64,
     pub ratio_ppm: AtomicU64,
     pub callbacks: AtomicU64,
+    pub native_event_count: AtomicU64,
+    pub native_event_gap_ns_max: AtomicU64,
     pub callback_frames_min: AtomicU64,
     pub callback_frames_max: AtomicU64,
     pub effective_target: AtomicU64,

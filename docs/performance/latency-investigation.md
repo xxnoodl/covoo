@@ -139,6 +139,34 @@ cancellation can obscure the return; record the reference settings and treat an
 ambiguous/missing echo as inconclusive. Phone I/O duration and timestamp age also
 aren't a complete physical measurement of microphone/ADC latency.
 
+## First fast-profile physical take
+
+Phone `5485C0B3-3A11-43A5-8479-896F7F74FB95`, receiver `905f411813dd5c29`:
+29.333333 seconds, 48 kHz mono, 1,408,000 frames in 11,000 packets. Strict
+phone-to-PC PCM comparison passed byte for byte. Phone reported zero capture/
+network drops, send errors or reconnects; all backup copies were sent.
+Actual iPhone I/O was 2.666667 ms, compared with 5 ms in earlier physical runs.
+Same-phone capture timestamp age at the network worker averaged 5.4155 ms,
+maximum 7.8150 ms. PC live-worker/reorder wait averaged 0.04028 ms, max 0.4718 ms.
+Neither figure is cross-device transit or full monitoring latency.
+
+The 128-frame Windows request produced callbacks of 480..1056 frames (10..22 ms
+of sample content at 48 kHz, not a measured callback interval). The conservative
+callback-demand floor raised the effective source target from requested 8 ms to
+26.3125 ms. OS/backend timestamp lead estimates ranged 10..22 ms. This isn't
+evidence of 8 ms monitoring or a physically measured total. One output underrun
+was counted; its position within the take isn't known. No overruns, omitted
+frames, live missing packets, output/endpoint errors or backlog discard occurred,
+and tail drain completed. Exact file continuity doesn't prove glitch-free output.
+User reports a significant subjective improvement but still excessive delay.
+
+User supplied Ableton screenshots at 256 samples/48 kHz showing 46 ms input,
+60 ms output and 106 ms overall, with CABLE Output input and Realtek output in
+FL Studio ASIO 1.05. Compared with 1024 samples/121 ms, the reported reduction
+is 15 ms. These reported values exclude covoo's upstream buffering. Next investigate
+actual low-period Windows output and the cable/DAW path rather than assuming the
+small nominal requests were honored. No new physical full-path result is claimed.
+
 ## Escalation paths after evidence
 
 If the driver still reports tens of milliseconds, it cannot establish the 10 ms

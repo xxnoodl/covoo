@@ -33,9 +33,12 @@ jobs:
           Copy-Item scripts/start-receiver.cmd build/windows/start-receiver.cmd
           Copy-Item scripts/start-daw.cmd build/windows/start-daw.cmd
           Copy-Item scripts/start-daw-fast.cmd build/windows/start-daw-fast.cmd
+          Copy-Item scripts/start-daw-lowlatency.cmd build/windows/start-daw-lowlatency.cmd
           Copy-Item scripts/latency-audit.py build/windows/latency-audit.py
           Copy-Item docs/testing/m3-device.md build/windows/DAW-setup.md
           Copy-Item docs/performance/latency-investigation.md build/windows/Latency-check.md
+          Copy-Item docs/testing/low-period-output.md build/windows/Low-period-test.md
+          Copy-Item licenses build/windows/licenses -Recurse
       - uses: actions/upload-artifact@v4
         if: runner.os == 'Windows'
         with:

@@ -19,6 +19,82 @@ pub struct RouteOptions {
     pub device: String,
     pub buffer_ms: u32,
     pub device_buffer_frames: Option<u32>,
+    pub backend: AudioBackend,
+}
+
+#[derive(Clone, Copy, PartialEq, Eq)]
+pub enum AudioBackend {
+    Legacy,
+    LowPeriod,
+}
+
+#[cfg(windows)]
+pub fn probe_device(name: &str) -> io::Result<serde_json::Value> {
+    crate::native_output::probe(name)
+}
+#[cfg(not(windows))]
+pub fn probe_device(_: &str) -> io::Result<serde_json::Value> {
+    Err(io::Error::other("Endpoint probing requires Windows"))
+}
+
+#[cfg(windows)]
+struct OutputHandle {
+    legacy: Option<cpal::Stream>,
+    native: Option<crate::native_output::NativeStream>,
+}
+#[cfg(windows)]
+impl OutputHandle {
+    fn unexpectedly_finished(&self) -> bool {
+        self.native
+            .as_ref()
+            .is_some_and(|native| native.unexpectedly_finished())
+    }
+    fn finish(&mut self) -> io::Result<()> {
+        use cpal::traits::StreamTrait;
+        if let Some(native) = &mut self.native {
+            native.finish()?;
+        }
+        if let Some(legacy) = &self.legacy {
+            legacy.pause().map_err(io::Error::other)?;
+        }
+        Ok(())
+    }
+}
+
+#[cfg(windows)]
+fn open(
+    options: &RouteOptions,
+    rate: u32,
+) -> io::Result<(
+    OutputHandle,
+    rtrb::Producer<f32>,
+    Arc<OutputStats>,
+    serde_json::Value,
+)> {
+    if options.backend == AudioBackend::LowPeriod {
+        let (stream, (producer, stats, report)) =
+            crate::native_output::open(options.clone(), rate)?;
+        Ok((
+            OutputHandle {
+                legacy: None,
+                native: Some(stream),
+            },
+            producer,
+            stats,
+            report,
+        ))
+    } else {
+        let (stream, producer, stats, report) = open_legacy(options, rate)?;
+        Ok((
+            OutputHandle {
+                legacy: Some(stream),
+                native: None,
+            },
+            producer,
+            stats,
+            report,
+        ))
+    }
 }
 
 pub struct LiveSession {
@@ -85,7 +161,7 @@ pub fn list_devices() -> io::Result<()> {
 }
 
 #[cfg(windows)]
-fn open(
+fn open_legacy(
     options: &RouteOptions,
     source_rate: u32,
 ) -> io::Result<(
@@ -277,7 +353,7 @@ fn run(
     receiver: mpsc::Receiver<AudioPacket>,
     ready: mpsc::SyncSender<Result<Arc<OutputStats>, String>>,
 ) -> io::Result<()> {
-    let (_stream, mut producer, stats, mut report) = match open(&options, rate) {
+    let (mut output, mut producer, stats, mut report) = match open(&options, rate) {
         Ok(value) => value,
         Err(error) => {
             let _ = ready.send(Err(error.to_string()));
@@ -304,6 +380,9 @@ fn run(
             Err(mpsc::RecvTimeoutError::Timeout) => {}
             Err(mpsc::RecvTimeoutError::Disconnected) => break,
         }
+        if output.unexpectedly_finished() && stats.errors.load(Ordering::Relaxed) == 0 {
+            stats.errors.fetch_add(1, Ordering::Relaxed);
+        }
         if stats.errors.load(Ordering::Relaxed) > 0 {
             endpoint_failed = true;
             break;
@@ -322,6 +401,11 @@ fn run(
     }
     thread::sleep(Duration::from_millis(20));
     let drained = producer.slots() == rate as usize / 2;
+    let stop_error = output.finish().err().map(|error| error.to_string());
+    report["output_stop_error"] = stop_error.clone().into();
+    if stop_error.is_some() {
+        endpoint_failed = true;
+    }
     if !drained || stats.errors.load(Ordering::Relaxed) > 0 {
         endpoint_failed = true;
     }
@@ -335,6 +419,13 @@ fn run(
     report["tail_drain_complete"] = drained.into();
     let callback_count = stats.callbacks.load(Ordering::Relaxed);
     report["output_callbacks"] = callback_count.into();
+    let native_events = stats.native_event_count.load(Ordering::Relaxed);
+    report["native_render_events"] = native_events.into();
+    report["native_event_gap_ms_max"] = if native_events == 0 {
+        serde_json::Value::Null
+    } else {
+        (stats.native_event_gap_ns_max.load(Ordering::Relaxed) as f64 / 1e6).into()
+    };
     let smallest = stats.callback_frames_min.load(Ordering::Relaxed);
     report["callback_frames_min"] = if smallest == u64::MAX {
         serde_json::Value::Null
@@ -389,6 +480,7 @@ mod tests {
                 device: "covoo-test-endpoint-that-does-not-exist".into(),
                 buffer_ms: 40,
                 device_buffer_frames: None,
+                backend: AudioBackend::Legacy,
             },
             48000,
             std::env::temp_dir().join("covoo-no-endpoint.live.json"),
