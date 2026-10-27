@@ -25,27 +25,30 @@ swiftc -swift-version 5 -import-objc-header apps/ios/Native/PhoneMic-Bridging-He
   tests/interoperability/SwiftNetworkCheck.swift "$test_dir/queue.o" "$test_dir/capture.o" \
   -framework AudioToolbox -framework Network -framework Security -o "$test_dir/client"
 "$test_dir/client" "$pairing"
+"$test_dir/client" "$pairing" --fast
 "$test_dir/client" "$pairing" --bad-pin
 python3 - "$test_dir" <<'PY'
 import array, json, pathlib, struct, sys
 root = pathlib.Path(sys.argv[1])
 reports = list(root.glob('covoo-*.json'))
-assert len(reports) == 1
-report = json.loads(reports[0].read_text())
-assert report['source_frames_written'] == 48000 and report['packets_not_written'] == 0
-assert report['rejected_datagrams'] == 0 and report['malformed_packets'] == 0
-assert report['silence_frames_inserted'] == 0 and report['discontinuities'] == 0
-assert 0 < report['authenticated_duplicates'] <= 200 and report['authenticated_too_old'] == 0
-with reports[0].with_suffix('.wav').open('rb') as f:
-    assert f.read(4) == b'RIFF'
-    f.read(8)
-    while True:
-        name, size = struct.unpack('<4sI', f.read(8))
-        if name == b'data':
-            samples = array.array('f'); samples.frombytes(f.read(size)); break
-        f.seek(size+(size&1),1)
-if sys.byteorder != 'little': samples.byteswap()
-assert len(samples) == 48000
-assert all(v == (i%31-15)/32 for i,v in enumerate(samples))
-print('Swift-to-Rust PCM verified: 200 encrypted packets, all 48000 samples exact')
+assert len(reports) == 2
+for path in reports:
+    report = json.loads(path.read_text())
+    assert report['pcm_continuity_verified'] and report['source_frames_written'] == 48000
+    assert report['packets_not_written'] == 0
+    assert report['rejected_datagrams'] == 0 and report['malformed_packets'] == 0
+    assert report['silence_frames_inserted'] == 0 and report['discontinuities'] == 0
+    assert 0 < report['authenticated_duplicates'] <= 200 and report['authenticated_too_old'] == 0
+    with path.with_suffix('.wav').open('rb') as f:
+        assert f.read(4) == b'RIFF'
+        f.read(8)
+        while True:
+            name, size = struct.unpack('<4sI', f.read(8))
+            if name == b'data':
+                samples = array.array('f'); samples.frombytes(f.read(size)); break
+            f.seek(size+(size&1),1)
+    if sys.byteorder != 'little': samples.byteswap()
+    assert len(samples) == 48000
+    assert all(v == (i%31-15)/32 for i,v in enumerate(samples))
+print('Swift-to-Rust PCM verified: stable and fast profiles, 96000 exact samples total')
 PY

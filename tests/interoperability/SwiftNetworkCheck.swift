@@ -16,7 +16,7 @@ struct SwiftNetworkCheck {
         let pairing = try PairingDetails(link: link)
         var started = false
         var client: AudioStreamer!
-        client = try AudioStreamer(pairing: pairing) { state in
+        client = try AudioStreamer(pairing: pairing, lowLatency: CommandLine.arguments.contains("--fast")) { state in
             if rejectPin {
                 if state.connected { print("Incorrect certificate pin was accepted"); exit(1) }
                 if state.identityRejected { print("Swift rejected incorrect TLS certificate fingerprint"); exit(0) }

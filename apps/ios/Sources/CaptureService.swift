@@ -55,6 +55,7 @@ final class CaptureService {
     private var streamer: AudioStreamer?
     private var storage: RecordingStorage?
     private var keepLocal = true
+    private var lowLatency = false
 
     func routeChanged() {
         worker.async { [self] in
@@ -71,7 +72,7 @@ final class CaptureService {
             + "/\(session.sampleRate)/\(session.ioBufferDuration)/\(session.inputNumberOfChannels)"
     }
 
-    func start(streamer: AudioStreamer? = nil, keepLocal: Bool = true, update: @escaping (CaptureState) -> Void) {
+    func start(streamer: AudioStreamer? = nil, keepLocal: Bool = true, lowLatency: Bool = false, update: @escaping (CaptureState) -> Void) {
         worker.async { [self] in
             publish = update
             guard unit == nil, !state.finalizing else {
@@ -82,6 +83,7 @@ final class CaptureService {
             state = CaptureState()
             self.streamer = streamer
             self.keepLocal = keepLocal
+            self.lowLatency = lowLatency
             events = []
             expectedPosition = 0
             expectedSampleTime = nil
@@ -113,7 +115,7 @@ final class CaptureService {
         let session = AVAudioSession.sharedInstance()
         try session.setCategory(.record, mode: .measurement, options: [])
         try session.setPreferredSampleRate(48_000)
-        try session.setPreferredIOBufferDuration(0.005)
+        try session.setPreferredIOBufferDuration(lowLatency ? 128.0 / 48000.0 : 0.005)
         try session.setActive(true)
         guard session.isInputAvailable else { throw CaptureFailure(message: "No audio input available") }
         guard let builtIn = session.availableInputs?.first(where: { $0.portType == .builtInMic }) else {
@@ -243,7 +245,8 @@ final class CaptureService {
         state.recording = true
         state.status = "Recording"
         let timer = DispatchSource.makeTimerSource(queue: worker)
-        timer.schedule(deadline: .now(), repeating: .milliseconds(10), leeway: .milliseconds(2))
+        timer.schedule(deadline: .now(), repeating: .milliseconds(lowLatency ? 1 : 10),
+            leeway: .microseconds(lowLatency ? 100 : 2000))
         timer.setEventHandler { [weak self] in self?.tick() }
         self.timer = timer
         timer.resume()
@@ -368,6 +371,8 @@ final class CaptureService {
                 "input": state.input, "device_side_format": state.deviceFormat,
                 "client_format": "mono Float32", "wire_transport": streamer == nil ? "off" : "TLS control + encrypted UDP",
                 "network_summary_pending":streamer != nil,
+                "latency_profile":lowLatency ? "experimental_fast" : "stable",
+                "capture_worker_interval_ms":lowLatency ? 1 : 10,
                 "frames_written": state.frames, "duration_from_written_frames_seconds": state.sampleRate > 0 ? Double(state.frames) / state.sampleRate : 0,
                 "wall_duration_seconds": startedAt.map { Date().timeIntervalSince($0) } ?? 0,
                 "callbacks": state.callbacks, "render_errors": state.renderErrors,
@@ -412,6 +417,14 @@ final class CaptureService {
                             report["network_dropped_frames"] = network.droppedFrames
                             report["network_send_errors"] = network.sendErrors
                             report["network_reconnects"] = network.reconnects
+                            report["network_capture_age_blocks"] = network.captureAgeBlocks
+                            if network.captureAgeBlocks > 0 {
+                                report["network_capture_age_ms_max"] = network.captureAgeMaxMS
+                                report["network_capture_age_ms_mean"] = network.captureAgeSumMS / Double(network.captureAgeBlocks)
+                            } else {
+                                report["network_capture_age_ms_max"] = NSNull()
+                                report["network_capture_age_ms_mean"] = NSNull()
+                            }
                             if let rtt = network.rttMS { report["control_rtt_ms"] = rtt }
                             else { report["control_rtt_ms"] = NSNull() }
                             self.state.status = localStatus + "; receiver recording saved"

@@ -24,6 +24,9 @@ struct PhoneMicApp: App {
                         Toggle("Packet protection", isOn: $capture.packetProtection)
                             .disabled(capture.streamState.connected || capture.state.recording || capture.requesting)
                         Text("Sends a backup copy to reduce brief audio gaps. Uses about twice the network traffic. Choose before connecting.").font(.caption)
+                        Toggle("Low latency", isOn: $capture.lowLatency)
+                            .disabled(capture.streamState.connected || capture.state.recording || capture.requesting)
+                        Text("Experimental. Use with the fast PC receiver. May increase battery use or audio dropouts.").font(.caption)
                         if capture.streamState.connected {
                             Button("Disconnect") { capture.disconnectReceiver() }
                                 .disabled(capture.state.recording || capture.requesting)
@@ -45,7 +48,7 @@ struct PhoneMicApp: App {
                     }
                     Section("Local recording") {
                         Text(capture.state.status)
-                        Toggle("Keep recording on phone", isOn: $capture.keepRecordingOnPhone)
+                        Toggle("Save", isOn: $capture.keepRecordingOnPhone)
                             .disabled(capture.state.recording || capture.requesting)
                         Text("Streaming takes are discarded from this phone after stopping unless enabled. PC and DAW copies are separate. Local-only recordings are kept.").font(.caption)
                         if capture.state.recording {

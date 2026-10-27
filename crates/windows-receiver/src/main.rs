@@ -73,15 +73,28 @@ fn run() -> io::Result<()> {
             .unwrap_or("40")
             .parse::<u32>()
             .map_err(io::Error::other)?;
-        if !(20..=100).contains(&buffer_ms) {
-            return Err(io::Error::other("--buffer-ms must be 20..100"));
+        if !(5..=100).contains(&buffer_ms) {
+            return Err(io::Error::other(
+                "--buffer-ms must be 5..100; values below 20 are experimental",
+            ));
+        }
+        let device_buffer_frames = value(&args, "--device-buffer-frames")?
+            .map(|s| s.parse::<u32>().map_err(io::Error::other))
+            .transpose()?;
+        if device_buffer_frames.is_some_and(|frames| !(32..=8192).contains(&frames)) {
+            return Err(io::Error::other("--device-buffer-frames must be 32..8192"));
         }
         server = server.with_route(windows_receiver::live::RouteOptions {
             device: device.into(),
             buffer_ms,
+            device_buffer_frames,
         });
-    } else if value(&args, "--buffer-ms")?.is_some() {
-        return Err(io::Error::other("--buffer-ms requires --audio-device"));
+    } else if value(&args, "--buffer-ms")?.is_some()
+        || value(&args, "--device-buffer-frames")?.is_some()
+    {
+        return Err(io::Error::other(
+            "Audio buffer options require --audio-device",
+        ));
     }
     let page = server.pairing_page(&host.to_string())?;
     let name = std::env::var("COVOO_PRODUCT_NAME")

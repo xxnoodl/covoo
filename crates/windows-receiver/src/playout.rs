@@ -17,6 +17,12 @@ pub struct OutputStats {
     pub high_water: AtomicU64,
     pub ratio_ppm: AtomicU64,
     pub callbacks: AtomicU64,
+    pub callback_frames_min: AtomicU64,
+    pub callback_frames_max: AtomicU64,
+    pub effective_target: AtomicU64,
+    pub driver_lead_ns_min: AtomicU64,
+    pub driver_lead_ns_max: AtomicU64,
+    pub driver_timestamp_count: AtomicU64,
     pub errors: AtomicU64,
     pub backend_errors: AtomicU64,
     pub ending: AtomicBool,
@@ -30,6 +36,8 @@ pub struct Renderer {
     offset: usize,
     available: usize,
     target: usize,
+    requested_target: usize,
+    source_rate: u32,
     high: usize,
     primed: bool,
     filtered: f64,
@@ -47,9 +55,9 @@ impl Renderer {
     ) -> Result<(Producer<f32>, Self), String> {
         if !(8000..=192000).contains(&source_rate)
             || !(8000..=192000).contains(&output_rate)
-            || !(20..=100).contains(&buffer_ms)
+            || !(5..=100).contains(&buffer_ms)
         {
-            return Err("Unsupported playout rate or buffer (20..100 ms)".into());
+            return Err("Unsupported playout rate or buffer (5..100 ms)".into());
         }
         let target = source_rate as usize * buffer_ms as usize / 1000;
         let (producer, consumer) = RingBuffer::new(source_rate as usize / 2);
@@ -71,6 +79,11 @@ impl Renderer {
         let output = resampler.output_buffer_allocate(true);
         let stats = Arc::new(OutputStats::default());
         stats.ratio_ppm.store(10000, Ordering::Relaxed);
+        stats.callback_frames_min.store(u64::MAX, Ordering::Relaxed);
+        stats.driver_lead_ns_min.store(u64::MAX, Ordering::Relaxed);
+        stats
+            .effective_target
+            .store(target as u64, Ordering::Relaxed);
         Ok((
             producer,
             Self {
@@ -81,6 +94,8 @@ impl Renderer {
                 offset: 0,
                 available: 0,
                 target,
+                requested_target: target,
+                source_rate,
                 high: target * 3,
                 primed: false,
                 filtered: target as f64,
@@ -94,6 +109,50 @@ impl Renderer {
 
     pub fn filter_delay_frames(&self) -> usize {
         self.resampler.output_delay()
+    }
+
+    /// Observe actual callback demand. A tiny requested queue cannot safely
+    /// feed a larger Windows callback burst; report the effective floor.
+    pub fn begin_callback(&mut self, frames: usize, driver_lead_ns: Option<u64>) {
+        self.stats.callbacks.fetch_add(1, Ordering::Relaxed);
+        if frames == 0 {
+            return;
+        }
+        self.stats
+            .callback_frames_min
+            .fetch_min(frames as u64, Ordering::Relaxed);
+        self.stats
+            .callback_frames_max
+            .fetch_max(frames as u64, Ordering::Relaxed);
+        if let Some(lead) = driver_lead_ns {
+            self.stats
+                .driver_lead_ns_min
+                .fetch_min(lead, Ordering::Relaxed);
+            self.stats
+                .driver_lead_ns_max
+                .fetch_max(lead, Ordering::Relaxed);
+            self.stats
+                .driver_timestamp_count
+                .fetch_add(1, Ordering::Relaxed);
+        }
+        let burst = (frames as f64 * f64::from(self.source_rate) / f64::from(self.output_rate)
+            * 1.01)
+            .ceil() as usize;
+        let needed = self
+            .requested_target
+            .max(burst + self.resampler.input_frames_max());
+        if needed > self.source_rate as usize / 2 {
+            self.stats.errors.fetch_add(1, Ordering::Relaxed);
+            return;
+        }
+        if needed > self.target {
+            self.target = needed;
+            self.high = self.target * 3;
+            self.filtered = self.target as f64;
+            self.stats
+                .effective_target
+                .store(self.target as u64, Ordering::Relaxed);
+        }
     }
 
     /// Called once per mono output frame. Never locks, allocates, logs or does I/O.
@@ -274,5 +333,34 @@ mod tests {
         assert!(samples.iter().any(|s| s.abs() > 0.2));
         assert_eq!(output.consumer.slots(), 0);
         assert_eq!(output.stats.underruns.load(Ordering::Relaxed), 0);
+    }
+
+    #[test]
+    fn small_target_accounts_for_actual_callback_burst() {
+        let (mut input, mut output) = Renderer::new(48000, 48000, 5).unwrap();
+        output.begin_callback(480, Some(10_000_000));
+        assert!(output.target > 480);
+        for _ in 0..240 {
+            input.push(0.25).unwrap();
+        }
+        assert!((0..480).all(|_| output.next_sample() == 0.0));
+        assert_eq!(output.stats.underruns.load(Ordering::Relaxed), 0);
+        for _ in 0..output.target {
+            input.push(0.25).unwrap();
+        }
+        assert!((0..480).any(|_| output.next_sample() > 0.1));
+        output.begin_callback(128, None);
+        assert_eq!(
+            output.stats.callback_frames_min.load(Ordering::Relaxed),
+            128
+        );
+        assert_eq!(
+            output.stats.callback_frames_max.load(Ordering::Relaxed),
+            480
+        );
+        assert_eq!(
+            output.stats.driver_timestamp_count.load(Ordering::Relaxed),
+            1
+        );
     }
 }

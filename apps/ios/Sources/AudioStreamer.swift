@@ -23,6 +23,9 @@ struct StreamState {
     var completedStreams: UInt64 = 0
     var identityRejected = false
     var rttMS: Double?
+    var captureAgeBlocks: UInt64 = 0
+    var captureAgeSumMS = 0.0
+    var captureAgeMaxMS = 0.0
 }
 
 /// Network work runs on queue, never on RemoteIO. PCM enters through a C SPSC queue.
@@ -66,14 +69,16 @@ final class AudioStreamer {
     private var endingCompletion: ((Result<StreamState, Error>) -> Void)?
     private var queueDropBaseline: UInt64 = 0
     private var protection = PacketProtection()
+    private let lowLatency: Bool
 
-    init(pairing: PairingDetails, packetProtection: Bool = true, update: @escaping (StreamState) -> Void) throws {
+    init(pairing: PairingDetails, packetProtection: Bool = true, lowLatency: Bool = false, update: @escaping (StreamState) -> Void) throws {
         guard let storage = pm_queue_create() else { throw WireFailure.invalid("Cannot allocate network queue") }
         pcmQueue = storage
         samples = .allocate(capacity: Int(PM_MAX_FRAMES))
         samples.initialize(repeating: 0, count: Int(PM_MAX_FRAMES))
         self.pairing = pairing
         self.update = update
+        self.lowLatency = lowLatency
         state.receiver = "\(pairing.host):\(pairing.port)"
         state.protectionEnabled = packetProtection
     }
@@ -91,7 +96,8 @@ final class AudioStreamer {
         queue.async { [self] in
             enabled = true
             let timer = DispatchSource.makeTimerSource(queue: queue)
-            timer.schedule(deadline: .now(), repeating: .milliseconds(5), leeway: .milliseconds(1))
+            timer.schedule(deadline: .now(), repeating: .milliseconds(lowLatency ? 1 : 5),
+                leeway: .microseconds(lowLatency ? 100 : 1000))
             timer.setEventHandler { [weak self] in self?.tick() }
             self.timer = timer
             timer.resume()
@@ -114,6 +120,7 @@ final class AudioStreamer {
             clearPCM()
             state.packets = 0; state.bytes = 0; state.droppedFrames = 0
             state.redundantPackets = 0; state.skippedCopies = 0
+            state.captureAgeBlocks = 0; state.captureAgeSumMS = 0; state.captureAgeMaxMS = 0
             protection = PacketProtection()
             state.sendErrors = 0; state.reconnects = 0
             queueDropBaseline = pm_queue_stats(pcmQueue).dropped_frames
@@ -312,6 +319,11 @@ final class AudioStreamer {
                 var info = PMBlockInfo()
                 guard pm_queue_pop(pcmQueue, samples, UInt32(PM_MAX_FRAMES), &info) else { break }
                 let age = now - pm_ticks_to_seconds(info.host_time)
+                if info.time_flags & AudioTimeStampFlags.hostTimeValid.rawValue != 0, age >= 0 {
+                    state.captureAgeBlocks += 1
+                    state.captureAgeSumMS += age * 1000
+                    state.captureAgeMaxMS = max(state.captureAgeMaxMS, age * 1000)
+                }
                 if info.time_flags & AudioTimeStampFlags.hostTimeValid.rawValue == 0 || age > 0.1 {
                     state.droppedFrames += UInt64(info.frames)
                     continue

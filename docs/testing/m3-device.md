@@ -2,7 +2,7 @@
 
 Stage A uses an external virtual audio cable. This isn't the native covoo mic.
 The current protected iPhone build is compatible; no new iPhone install needed.
-The later automatic-discard build adds Keep recording on phone. Enable it before
+The later automatic-discard build adds Save. Enable it before
 validation takes if a phone reference/export is needed. Otherwise new streaming
 phone copies are deleted after stopping, even if receiver finalization fails.
 Local-only recording always saves. PC/DAW copies need separate deletion.
@@ -85,3 +85,7 @@ Default live buffering is 40 ms, reorder deadline up to 20 ms, plus resampler,
 WASAPI, cable and DAW delays. These aren't a measured total and aren't a promise
 of the provisional 40 ms input target. Optimize only after routing is proven.
 Native capture driver work waits for this physical routing result.
+
+For the optional fast profile and latency comparison, follow the
+[latency investigation](../performance/latency-investigation.md). It needs the
+new phone/Windows builds. An 8 ms queue request isn't an 8 ms monitoring result.

@@ -18,6 +18,7 @@ use std::{
 pub struct RouteOptions {
     pub device: String,
     pub buffer_ms: u32,
+    pub device_buffer_frames: Option<u32>,
 }
 
 pub struct LiveSession {
@@ -120,6 +121,7 @@ fn open(
         "endpoint_channels":channels, "endpoint_sample_format":format.to_string(),
         "source_rate_hz":source_rate, "target_buffer_ms":options.buffer_ms,
         "resampler_delay_output_frames":renderer.filter_delay_frames(),
+        "requested_device_buffer_frames":options.device_buffer_frames,
         "latency":"not measured", "backend":"WASAPI shared", "stage":"M3 A external endpoint"});
     fn build<T>(
         device: &cpal::Device,
@@ -134,8 +136,13 @@ fn open(
         let errors = renderer.stats.clone();
         device.build_output_stream(
             config,
-            move |data: &mut [T], _| {
-                renderer.stats.callbacks.fetch_add(1, Ordering::Relaxed);
+            move |data: &mut [T], info| {
+                let timestamp = info.timestamp();
+                let lead = timestamp
+                    .playback
+                    .duration_since(&timestamp.callback)
+                    .map(|duration| duration.as_nanos().min(u128::from(u64::MAX)) as u64);
+                renderer.begin_callback(data.len() / channels, lead);
                 for frame in data.chunks_mut(channels) {
                     let mono = renderer.next_sample();
                     for sample in frame {
@@ -150,7 +157,10 @@ fn open(
             None,
         )
     }
-    let stream_config = config.config();
+    let mut stream_config = config.config();
+    if let Some(frames) = options.device_buffer_frames {
+        stream_config.buffer_size = cpal::BufferSize::Fixed(frames);
+    }
     let stream = match format {
         cpal::SampleFormat::F32 => build::<f32>(&device, &stream_config, renderer, channels),
         cpal::SampleFormat::I16 => build::<i16>(&device, &stream_config, renderer, channels),
@@ -187,6 +197,9 @@ struct OrderedInput {
     missing_packets: u64,
     omitted_frames: u64,
     late: u64,
+    wait_total_ns: u64,
+    wait_max_ns: u64,
+    delivered_packets: u64,
     rate: u32,
 }
 #[cfg(any(windows, test))]
@@ -200,6 +213,9 @@ impl OrderedInput {
             missing_packets: 0,
             omitted_frames: 0,
             late: 0,
+            wait_total_ns: 0,
+            wait_max_ns: 0,
+            delivered_packets: 0,
             rate,
         }
     }
@@ -239,6 +255,13 @@ impl OrderedInput {
                 }
             }
             self.position = Some(position + packet.samples.len() as u64);
+            let wait = now
+                .saturating_duration_since(packet.arrival)
+                .as_nanos()
+                .min(u128::from(u64::MAX)) as u64;
+            self.wait_total_ns = self.wait_total_ns.saturating_add(wait);
+            self.wait_max_ns = self.wait_max_ns.max(wait);
+            self.delivered_packets += 1;
             for value in packet.samples {
                 sample(value);
             }
@@ -310,10 +333,41 @@ fn run(
     report["output_errors"] = stats.errors.load(Ordering::Relaxed).into();
     report["endpoint_errors"] = stats.backend_errors.load(Ordering::Relaxed).into();
     report["tail_drain_complete"] = drained.into();
+    let callback_count = stats.callbacks.load(Ordering::Relaxed);
+    report["output_callbacks"] = callback_count.into();
+    let smallest = stats.callback_frames_min.load(Ordering::Relaxed);
+    report["callback_frames_min"] = if smallest == u64::MAX {
+        serde_json::Value::Null
+    } else {
+        smallest.into()
+    };
+    report["callback_frames_max"] = stats.callback_frames_max.load(Ordering::Relaxed).into();
+    report["effective_buffer_target_ms"] =
+        (stats.effective_target.load(Ordering::Relaxed) as f64 * 1000.0 / f64::from(rate)).into();
+    let stamps = stats.driver_timestamp_count.load(Ordering::Relaxed);
+    report["driver_timestamp_count"] = stamps.into();
+    report["driver_timestamp_lead_ms_min"] = if stamps == 0 {
+        serde_json::Value::Null
+    } else {
+        (stats.driver_lead_ns_min.load(Ordering::Relaxed) as f64 / 1e6).into()
+    };
+    report["driver_timestamp_lead_ms_max"] = if stamps == 0 {
+        serde_json::Value::Null
+    } else {
+        (stats.driver_lead_ns_max.load(Ordering::Relaxed) as f64 / 1e6).into()
+    };
+    report["driver_timestamp_note"] =
+        "OS/backend timestamp estimate, not physically measured latency".into();
     report["inserted_silence_frames"] = ordered.missing_frames.into();
     report["missing_packets"] = ordered.missing_packets.into();
     report["omitted_gap_frames"] = ordered.omitted_frames.into();
     report["late_packets"] = ordered.late.into();
+    report["packet_live_worker_wait_ms_max"] = (ordered.wait_max_ns as f64 / 1e6).into();
+    report["packet_live_worker_wait_ms_mean"] = if ordered.delivered_packets == 0 {
+        serde_json::Value::Null
+    } else {
+        (ordered.wait_total_ns as f64 / ordered.delivered_packets as f64 / 1e6).into()
+    };
     report["endpoint_healthy"] = (!endpoint_failed).into();
     fs::write(path, serde_json::to_vec_pretty(&report)?)?;
     if endpoint_failed {
@@ -334,6 +388,7 @@ mod tests {
             RouteOptions {
                 device: "covoo-test-endpoint-that-does-not-exist".into(),
                 buffer_ms: 40,
+                device_buffer_frames: None,
             },
             48000,
             std::env::temp_dir().join("covoo-no-endpoint.live.json"),
