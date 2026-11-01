@@ -103,6 +103,7 @@ jobs:
           name: covoo-ios-build-and-logs
           path: |
             build/ios-*.log
+            build/swift-network.*/receiver.log
             build/*.xcresult
             build/device/Build/Products/Debug-iphoneos/PhoneMic.app
           retention-days: 7

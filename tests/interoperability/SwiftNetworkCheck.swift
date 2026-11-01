@@ -19,8 +19,21 @@ struct SwiftNetworkCheck {
         var started = false
         var pausedOnce = false
         var pauseCompleted = false
+        let resumed = DispatchSemaphore(value: 0)
+        var resumedSignaled = false
+        var previousStatus = ""
         var client: AudioStreamer!
         client = try AudioStreamer(pairing: pairing, lowLatency: CommandLine.arguments.contains("--fast")) { state in
+            if reconnect {
+                if state.status != previousStatus {
+                    previousStatus = state.status
+                    print("Recovery: \(state.status), segments=\(state.segmentsStarted), streaming=\(state.streaming)")
+                }
+                if state.streaming, state.segmentsStarted >= 2, !resumedSignaled {
+                    resumedSignaled = true
+                    resumed.signal()
+                }
+            }
             if rejectPin {
                 if state.connected { print("Incorrect certificate pin was accepted"); exit(1) }
                 if state.identityRejected { print("Swift rejected incorrect TLS certificate fingerprint"); exit(0) }
@@ -66,25 +79,38 @@ struct SwiftNetworkCheck {
                         catch { print("Could not arm proxy drop: \(error)"); exit(1) }
                     }
                     DispatchQueue.global().async {
-                        for block in 0..<(reconnect ? 600 : 200) {
-                            let samples: [Float] = (0..<240).map { Float((block*240+$0)%31-15)/32 }
-                            var info = PMBlockInfo()
-                            info.sequence = UInt64(block)
-                            info.sample_position = UInt64(block*240)
-                            info.host_time = mach_absolute_time()
-                            info.sample_time = Double(block*240)
-                            info.time_flags = AudioTimeStampFlags.sampleTimeValid.rawValue | AudioTimeStampFlags.hostTimeValid.rawValue
-                            info.frames = 240
-                            samples.withUnsafeBufferPointer { streamingClient.submit($0.baseAddress!, info: info) }
-                            usleep(5000)
+                        func produce(_ blocks: Range<Int>) {
+                            for block in blocks {
+                                let samples: [Float] = (0..<240).map { Float((block*240+$0)%31-15)/32 }
+                                var info = PMBlockInfo()
+                                info.sequence = UInt64(block)
+                                info.sample_position = UInt64(block*240)
+                                info.host_time = mach_absolute_time()
+                                info.sample_time = Double(block*240)
+                                info.time_flags = AudioTimeStampFlags.sampleTimeValid.rawValue | AudioTimeStampFlags.hostTimeValid.rawValue
+                                info.frames = 240
+                                samples.withUnsafeBufferPointer { streamingClient.submit($0.baseAddress!, info: info) }
+                                usleep(5000)
+                            }
                         }
-                        streamingClient.end()
+                        produce(0..<(reconnect ? 600 : 200))
+                        if reconnect {
+                            guard resumed.wait(timeout: .now() + 8) == .success else {
+                                print("Stream did not resume within the recovery deadline"); exit(1)
+                            }
+                            produce(600..<700)
+                        }
+                        streamingClient.end { result in
+                            if case .failure(let error) = result {
+                                print("Stop failed: \(error)"); exit(1)
+                            }
+                        }
                     }
                 }
             }
         }
         client.connect()
-        DispatchQueue.global().asyncAfter(deadline: .now() + 15) { print("Swift network test timed out"); exit(1) }
+        DispatchQueue.global().asyncAfter(deadline: .now() + 25) { print("Swift network test timed out"); exit(1) }
         dispatchMain()
     }
 }

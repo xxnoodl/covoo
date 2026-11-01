@@ -45,6 +45,13 @@ reconnection, a final session ACK and an interrupted whole-take result. Separate
 stable/fast/idle-pause tests verify 144,000 exact PCM samples. Simulator tests
 include the take-ledger regression. CI results are recorded after completion.
 
+The a21ccd5 revision passed Windows, Linux and macOS CI, including unsigned iOS
+builds and simulator tests. The following documentation/helper revision exposed
+an intermittent reconnect-test timeout. Its producer stopped after a fixed time
+even if reconnection was still pending, and ignored stop errors. The test now
+waits for a resumed stream before stopping, reports stop failures, and retains
+receiver logs on failure. This test correction still needs macOS CI validation.
+
 The segment tool reproduced the supplied E19AA29C outage result: both received
 segments bit-exact, 1,295,488 source frames absent from supplied PC files,
 whole_take_pcm_verified false. No new physical recording was requested.

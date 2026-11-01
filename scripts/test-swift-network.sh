@@ -8,7 +8,17 @@ target/debug/windows-receiver --serve --host 127.0.0.1 --port 0 --seconds 90 \
   --no-discovery --output "$test_dir" > "$test_dir/receiver.log" 2>&1 &
 receiver_pid=$!
 proxy_pid=""
-trap 'kill "$receiver_pid" 2>/dev/null || true; if [ -n "$proxy_pid" ]; then kill "$proxy_pid" 2>/dev/null || true; fi' EXIT
+cleanup() {
+  status=$?
+  if [ "$status" -ne 0 ]; then
+    echo "Receiver log after network test failure:"
+    tail -n 100 "$test_dir/receiver.log" || true
+  fi
+  kill "$receiver_pid" 2>/dev/null || true
+  if [ -n "$proxy_pid" ]; then kill "$proxy_pid" 2>/dev/null || true; fi
+  exit "$status"
+}
+trap cleanup EXIT
 for _ in {1..100}; do
   if [ -f "$test_dir/pairing.html" ]; then break; fi
   sleep 0.1
