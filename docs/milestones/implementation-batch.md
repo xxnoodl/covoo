@@ -48,6 +48,31 @@ does not pretend to show live or unavailable measurements.
   These are modeled queue tests, not measured device clocks or physical latency.
 - Offline dashboard generated from the existing receiver reports.
 
+## CI evidence
+
+Source commits: `3ff2c50` (implementation), `5c1e073` (per-connection path
+reporting), `c313aee` (Windows C test SDK selection correction).
+
+[Run 41260498140](https://github.com/xxnoodl/covoo/actions/runs/41260498140)
+passed Windows and Linux jobs for `c313aee`: formatting, Clippy, 30 workspace
+tests, two replay tests, seven Python tests, native queue checks, builds and
+packaging. Linux includes concurrent queue testing with ASan/UBSan. Windows
+used MSVC 14.44.35207 and SDK 10.0.26100.0.
+
+[Run 41260289311](https://github.com/xxnoodl/covoo/actions/runs/41260289311)
+passed its iOS job for `5c1e073`: native queue checks, stable/fast Swift networking
+with 96,000 exact samples, unsigned simulator/device builds, six simulator
+tests and unsigned packaging. The iOS source is unchanged in `c313aee`;
+its redundant iOS job was still running when these results were recorded.
+
+The initial Windows C checks failed because the test runner selected an SDK
+include directory without C runtime headers. SDK selection now filters for
+numeric versions with actual UCRT headers/libraries. Local and CI reruns passed;
+no audio implementation workaround or skipped test was used.
+
+Local Windows package: `build/covoo-dev-nov1.zip`. It contains no recordings or
+pairing credentials. Device installation is deferred, not implied by CI success.
+
 ## Hardware validation and limitations
 
 No new hardware test, iPhone deployment, driver build/installation, security
