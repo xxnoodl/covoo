@@ -1,3 +1,4 @@
+mod dashboard;
 pub mod device_clock;
 pub mod endpoint_ingress;
 pub mod endpoint_packet;

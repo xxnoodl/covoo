@@ -299,6 +299,10 @@ pub fn smoke() -> io::Result<()> {
         .join()
         .map_err(|_| io::Error::other("server thread failed"))??;
     outcome?;
+    let dashboard = std::fs::read_to_string(directory.join("dashboard.html"))?;
+    assert!(dashboard.contains("Receiver stopped"));
+    assert!(!dashboard.contains(&hex(&token)));
+    std::fs::remove_file(directory.join("dashboard.html"))?;
     std::fs::remove_dir(directory)?;
     println!(
         "Secure loopback passed: pinned TLS, token rejection, encrypted/reordered PCM, tamper/replay rejection, restart and exact WAV samples"

@@ -43,6 +43,10 @@ acceptance gates still apply before dependent work or milestone sign-off.
 
 ## Required acceptance tests, scheduled later
 
+- [ ] Receiver dashboard: validate browser refresh during a take, idle/final state,
+  restart and stale warning after forced exit. Compare output counters with saved
+  reports during later output tests. See docs/testing/receiver-dashboard.md.
+
 - [ ] New iOS queue path: deploy a signed CI build when ready; compare saved
   phone/PC PCM, capture-to-network age, queue drops and callback work with the
   previous build. Exercise slow local storage, network backpressure and repeated
@@ -86,7 +90,8 @@ acceptance gates still apply before dependent work or milestone sign-off.
 ## Implementation still required
 
 - [ ] Native WaveRT endpoint, restricted feeder, build-only WDK CI and installer rollback.
-- [ ] Live desktop dashboard; the current HTML report is offline only.
+- [ ] Native desktop controls and remaining metrics. The local receiver dashboard
+  is implemented; browser/physical checks remain pending above.
 - [ ] Optional local iPhone monitoring with independent gain/mute and safe route changes.
 - [ ] Deliberate background recording support; current policy stops on background/lock.
 - [ ] Persisted pairing and consumer installation workflow.

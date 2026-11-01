@@ -1,0 +1,28 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta http-equiv="refresh" content="2">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; base-uri 'none'; form-action 'none'">
+<title>covoo receiver</title>
+<style>
+:root{color-scheme:dark}body{font:16px system-ui;margin:2rem auto;padding:0 1rem;max-width:900px;background:#151718;color:#eee}
+h1{font-size:2rem}#freshness,p{color:#b9c2c5}#state{font-size:1.3rem}a{color:#98cfff}
+dl{display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:1px;background:#435057;border:1px solid #435057}
+dl div{padding:.8rem;background:#202629;overflow-wrap:anywhere}dt{color:#b9c2c5;font-size:.9rem}dd{margin:.25rem 0 0;font-variant-numeric:tabular-nums}
+</style></head><body><h1>covoo</h1>
+<p id="state">{{state}}</p><p id="freshness">Checking snapshot age...</p>
+<dl>{{rows}}</dl>
+<p>Local receiver status, refreshed every two seconds. Counts describe the current take.
+Archive continuity is checked in the saved report. It does not prove glitch-free monitoring.</p>
+<p><a href="pairing.html">Pair a phone</a></p>
+<script>
+const updated = {{updated_ms}};
+const stopped = {{stopped}};
+const age = Date.now() - updated;
+const label = document.getElementById('freshness');
+label.textContent = stopped ? 'Receiver stopped. Final status snapshot.' :
+  age < 0 ? 'Snapshot time is ahead of this system clock. Freshness unknown.' :
+  age > 5000 ? 'Updates paused. This snapshot may be stale.' : 'Receiver status is updating.';
+if (!stopped && age > 5000) document.getElementById('state').textContent = 'Status unavailable';
+label.textContent += ' Last update: ' + new Date(updated).toLocaleString();
+</script></body></html>

@@ -50,6 +50,7 @@ struct Active {
     id: u64,
     peer: IpAddr,
     rate: u32,
+    began: Instant,
     crypto: secure::Receiver,
     sender: mpsc::SyncSender<AudioPacket>,
     metrics: Arc<Mutex<Metrics>>,
@@ -118,13 +119,20 @@ impl Server {
             .min_dimensions(400, 400)
             .build();
         let page = format!(
-            "<!doctype html><meta charset=utf-8><title>covoo pairing</title><body style='font:18px sans-serif;max-width:700px;margin:40px auto'><h1>covoo</h1><p>Scan with your iPhone camera, then connect in covoo.</p>{svg}<p>Keep this pairing page private. It permits microphone streaming to this receiver while it is running.</p><details><summary>Manual pairing link</summary><textarea style='width:100%;height:100px' readonly>{link}</textarea></details></body>"
+            "<!doctype html><meta charset=utf-8><title>covoo pairing</title><body style='font:18px sans-serif;max-width:700px;margin:40px auto'><h1>covoo</h1><p>Scan with your iPhone camera, then connect in covoo.</p>{svg}<p><a href='dashboard.html'>Receiver status</a></p><p>Keep this pairing page private. It permits microphone streaming to this receiver while it is running.</p><details><summary>Manual pairing link</summary><textarea style='width:100%;height:100px' readonly>{link}</textarea></details></body>"
         );
         let path = self.output.join("pairing.html");
         fs::write(&path, page)?;
         Ok(path)
     }
     pub fn run(self, duration: Duration) -> io::Result<()> {
+        let dashboard = match crate::dashboard::Dashboard::start(self.output.clone()) {
+            Ok(dashboard) => Some(dashboard),
+            Err(error) => {
+                eprintln!("Dashboard unavailable: {error}. Audio continues.");
+                None
+            }
+        };
         let active = self.active.clone();
         let stop = self.stop.clone();
         let udp = self.udp.try_clone()?;
@@ -132,6 +140,9 @@ impl Server {
         let control_owner = Arc::new(Mutex::new(()));
         let connections = Arc::new(AtomicUsize::new(0));
         let began = Instant::now();
+        if let Some(dashboard) = &dashboard {
+            dashboard.update(self.status_snapshot(began.elapsed(), false));
+        }
         let mut next_status = Instant::now() + Duration::from_secs(1);
         let mut handlers = Vec::new();
         while !self.stop.load(Ordering::Relaxed) && began.elapsed() < duration {
@@ -177,6 +188,10 @@ impl Server {
                 Err(error) => return Err(error),
             }
             if Instant::now() >= next_status {
+                // Snapshot locks are released before the file worker receives it.
+                if let Some(dashboard) = &dashboard {
+                    dashboard.update(self.status_snapshot(began.elapsed(), false));
+                }
                 if let Some(active) = self.active.lock().unwrap().as_ref() {
                     let stats = active.metrics.lock().unwrap();
                     println!(
@@ -218,7 +233,159 @@ impl Server {
         for handler in handlers {
             let _ = handler.join();
         }
+        if let Some(dashboard) = dashboard {
+            dashboard.finish(self.status_snapshot(began.elapsed(), true));
+        }
         Ok(())
+    }
+
+    fn status_snapshot(&self, uptime: Duration, stopped: bool) -> crate::dashboard::Snapshot {
+        let mut rows = vec![
+            ("Receiver address", self.address.to_string()),
+            ("Receiver uptime", format!("{:.1} s", uptime.as_secs_f64())),
+            (
+                "Transport",
+                "Authenticated encrypted UDP; interface not measured here".into(),
+            ),
+            (
+                "Selected output",
+                self.route
+                    .as_ref()
+                    .map_or_else(|| "File recording only".into(), |r| r.device.clone()),
+            ),
+            ("Physical monitoring latency", "Not measured".into()),
+            ("Control RTT", "Not collected by receiver".into()),
+            ("CPU and memory", "Not collected".into()),
+            (
+                "Phone microphone and capture buffer",
+                "Not reported by phone control protocol".into(),
+            ),
+        ];
+        let mut state = "No active take; pairing state not collected";
+        if let Some(active) = self.active.lock().unwrap().as_ref() {
+            let stats = active.metrics.lock().unwrap().clone();
+            let packet_age = active.last_arrival.map(|last| last.elapsed());
+            state = if packet_age.is_some_and(|age| age < Duration::from_secs(2)) {
+                "Receiving audio"
+            } else {
+                "Take active; waiting for audio"
+            };
+            rows.extend([
+                ("Phone address", active.peer.to_string()),
+                ("Session", format!("{:016x}", active.id)),
+                (
+                    "Take duration",
+                    format!("{:.1} s", active.began.elapsed().as_secs_f64()),
+                ),
+                (
+                    "Source format",
+                    format!("{} Hz, mono, Float32", active.rate),
+                ),
+                (
+                    "Last accepted packet age",
+                    packet_age.map_or_else(
+                        || "No packet received".into(),
+                        |age| format!("{:.0} ms", age.as_secs_f64() * 1000.0),
+                    ),
+                ),
+                (
+                    "Last packet peak",
+                    if stats.authenticated == 0 {
+                        "Not available".into()
+                    } else if stats.input_peak_linear > 0.0 {
+                        format!("{:.1} dBFS", 20.0 * stats.input_peak_linear.log10())
+                    } else {
+                        "Silence".into()
+                    },
+                ),
+                ("Authenticated datagrams", stats.authenticated.to_string()),
+                ("Rejected datagrams", stats.rejected.to_string()),
+                (
+                    "Authenticated duplicate datagrams",
+                    stats.duplicate.to_string(),
+                ),
+                ("Archive queue drops", stats.queue_drops.to_string()),
+                ("Live queue drops", stats.live_queue_drops.to_string()),
+                (
+                    "Packet delay variation estimate",
+                    if stats.jitter_observations > 0 {
+                        format!("{:.2} ms", stats.jitter_ms)
+                    } else {
+                        "Not available".into()
+                    },
+                ),
+                (
+                    "Packet loss",
+                    "See finalized archive report; not inferred from sequence gaps here".into(),
+                ),
+                (
+                    "Archive error",
+                    stats.error.unwrap_or_else(|| "None reported".into()),
+                ),
+            ]);
+            if let Some(live) = &active.live_stats {
+                let queued = live.queued.load(Ordering::Relaxed);
+                let target = live.effective_target.load(Ordering::Relaxed);
+                let callbacks = live.callbacks.load(Ordering::Relaxed);
+                rows.extend([
+                    (
+                        "Output state",
+                        if live.errors.load(Ordering::Relaxed) > 0 {
+                            "Errors reported".into()
+                        } else if callbacks > 0 {
+                            "Callbacks observed; audible output unverified".into()
+                        } else {
+                            "Waiting for callbacks".into()
+                        },
+                    ),
+                    (
+                        "Source buffer occupancy",
+                        format!(
+                            "{queued} frames ({:.2} ms)",
+                            queued as f64 * 1000.0 / f64::from(active.rate)
+                        ),
+                    ),
+                    (
+                        "Effective source buffer target",
+                        format!(
+                            "{target} frames ({:.2} ms)",
+                            target as f64 * 1000.0 / f64::from(active.rate)
+                        ),
+                    ),
+                    (
+                        "Source underruns",
+                        live.underruns.load(Ordering::Relaxed).to_string(),
+                    ),
+                    (
+                        "Source overruns",
+                        live.overruns.load(Ordering::Relaxed).to_string(),
+                    ),
+                    (
+                        "Output errors",
+                        live.errors.load(Ordering::Relaxed).to_string(),
+                    ),
+                    (
+                        "ASRC correction",
+                        if callbacks > 0 {
+                            format!(
+                                "{} ppm; not a physical drift measurement",
+                                live.ratio_ppm.load(Ordering::Relaxed) as i64 - 10000
+                            )
+                        } else {
+                            "Not available".into()
+                        },
+                    ),
+                ]);
+            }
+        }
+        if stopped {
+            state = "Receiver stopped";
+        }
+        crate::dashboard::Snapshot {
+            state,
+            stopped,
+            rows,
+        }
     }
 }
 
@@ -317,6 +484,7 @@ fn control(
                         id,
                         peer: peer.ip(),
                         rate: sample_rate,
+                        began: Instant::now(),
                         crypto: secure::Receiver::new(&key, id),
                         sender,
                         metrics: metrics.clone(),
@@ -489,6 +657,7 @@ fn udp_loop(socket: UdpSocket, registry: Arc<Mutex<Option<Active>>>, stop: Arc<A
                     .abs()
                     * 1000.0;
                 stats.jitter_ms += (variation - stats.jitter_ms) / 16.0;
+                stats.jitter_observations += 1;
             }
         }
         if active.last_timing.is_none_or(|(last, _, _)| counter > last) {
@@ -525,6 +694,60 @@ pub fn default_host() -> io::Result<IpAddr> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn dashboard_distinguishes_stalled_audio_from_idle_without_inventing_measurements() {
+        let server = Server::bind(
+            SocketAddr::from((Ipv4Addr::LOCALHOST, 0)),
+            std::env::temp_dir(),
+        )
+        .unwrap();
+        let (sender, _receiver) = mpsc::sync_channel(1);
+        let metrics = Metrics {
+            authenticated: 1,
+            ..Metrics::default()
+        };
+        *server.active.lock().unwrap() = Some(Active {
+            id: 7,
+            peer: Ipv4Addr::LOCALHOST.into(),
+            rate: 48000,
+            began: Instant::now(),
+            crypto: secure::Receiver::new(&[42; 32], 7),
+            sender,
+            metrics: Arc::new(Mutex::new(metrics)),
+            last_timing: None,
+            last_arrival: Some(Instant::now() - Duration::from_secs(3)),
+            live: None,
+            live_stats: None,
+        });
+        let snapshot = server.status_snapshot(Duration::from_secs(4), false);
+        assert_eq!(snapshot.state, "Take active; waiting for audio");
+        let field = |name| {
+            &snapshot
+                .rows
+                .iter()
+                .find(|(key, _)| *key == name)
+                .unwrap()
+                .1
+        };
+        assert_eq!(field("Physical monitoring latency"), "Not measured");
+        assert_eq!(field("Control RTT"), "Not collected by receiver");
+        assert_eq!(field("Packet delay variation estimate"), "Not available");
+        assert!(
+            !snapshot
+                .rows
+                .iter()
+                .any(|(name, _)| *name == "Source buffer occupancy")
+        );
+        server.active.lock().unwrap().take();
+        let idle = server.status_snapshot(Duration::from_secs(5), false);
+        assert_eq!(idle.state, "No active take; pairing state not collected");
+        assert!(!idle.rows.iter().any(|(name, _)| *name == "Phone address"));
+        assert_eq!(
+            server.status_snapshot(Duration::from_secs(5), true).state,
+            "Receiver stopped"
+        );
+    }
+
     #[test]
     fn expired_control_frame_deadline_cannot_wait_for_more_bytes() {
         let listener = TcpListener::bind((Ipv4Addr::LOCALHOST, 0)).unwrap();

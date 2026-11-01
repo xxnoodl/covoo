@@ -144,6 +144,10 @@ fn run() -> io::Result<()> {
         page.display()
     );
     println!(
+        "Receiver status: {}",
+        page.with_file_name("dashboard.html").display()
+    );
+    println!(
         "Allow this receiver on private networks if Windows asks. No firewall settings are changed automatically."
     );
     let result = server.run(Duration::from_secs(seconds));
