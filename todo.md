@@ -36,6 +36,8 @@ acceptance gates still apply before dependent work or milestone sign-off.
 - [ ] M4 USB feasibility: verify the actual network interface/route and measure
   throughput, jitter and stability against Wi-Fi. Successful takes alone do not
   establish the route or latency.
+- [ ] Check separate iOS control/audio path labels during Wi-Fi/USB changes;
+  compare OS-reported interface types with Windows binding and traffic evidence.
 - [ ] M5 latency: common-reference physical measurement, clock drift and long-term
   occupancy. Keep software estimates separate from measured monitoring delay.
 - [ ] M6 monitoring/reliability: local gain/mute and route safety, interruptions,

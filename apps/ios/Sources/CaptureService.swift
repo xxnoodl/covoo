@@ -412,6 +412,8 @@ final class CaptureService {
                         switch result {
                         case .success(let network):
                             report["network_completed"] = true
+                            report["network_control_path"] = network.controlPath
+                            report["network_audio_path"] = network.audioPath
                             report["network_packets_sent"] = network.packets
                             report["network_bytes_sent"] = network.bytes
                             report["network_packet_protection"] = network.protectionEnabled

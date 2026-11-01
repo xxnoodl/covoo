@@ -8,6 +8,8 @@ import Security
 struct StreamState {
     var receiver = "Not paired"
     var transport = "Not connected"
+    var controlPath = "Not reported"
+    var audioPath = "Not reported"
     var sessionSeconds = 0.0
     var connected = false
     var streaming = false
@@ -30,6 +32,17 @@ struct StreamState {
 
 /// Network work runs on queue, never on RemoteIO. PCM enters through a C SPSC queue.
 final class AudioStreamer {
+    private static func pathLabel(_ path: NWPath?) -> String {
+        guard let path else { return "Not reported" }
+        guard path.status == .satisfied else { return "Unavailable" }
+        var names: [String] = []
+        if path.usesInterfaceType(.wifi) { names.append("Wi-Fi") }
+        if path.usesInterfaceType(.wiredEthernet) { names.append("Wired Ethernet") }
+        if path.usesInterfaceType(.cellular) { names.append("Cellular") }
+        if path.usesInterfaceType(.loopback) { names.append("Loopback") }
+        if path.usesInterfaceType(.other) { names.append("Other interface") }
+        return names.isEmpty ? "Unclassified" : names.joined(separator: ", ")
+    }
     private let queue = DispatchQueue(label: "covoo.network", qos: .userInitiated)
     private let pcmQueue: OpaquePointer
     private let samples: UnsafeMutablePointer<Float>
@@ -205,6 +218,11 @@ final class AudioStreamer {
             default: break
             }
         }
+        connection.pathUpdateHandler = { [weak self] path in
+            guard let self, self.generation == attempt else { return }
+            self.state.controlPath = Self.pathLabel(path)
+            self.publish()
+        }
         connection.start(queue: queue)
         publish()
     }
@@ -240,7 +258,8 @@ final class AudioStreamer {
                 (message["format"] as? String) == "f32le" else { throw WireFailure.invalid("Receiver capabilities incompatible") }
             state.connected = true
             connectedAt = now
-            state.transport = control?.currentPath?.usesInterfaceType(.wifi) == true ? "Wi-Fi UDP / TLS control" : "LAN UDP / TLS control"
+            state.transport = "Encrypted UDP / TLS control"
+            state.controlPath = Self.pathLabel(control?.currentPath)
             state.status = "Connected"
             retryDelay = 1
             if rate != nil { sendStart() }
@@ -261,11 +280,13 @@ final class AudioStreamer {
             udpParameters.prohibitedInterfaceTypes = [.cellular]
             let connection = NWConnection(host: NWEndpoint.Host(pairing.host), port: NWEndpoint.Port(rawValue: UInt16(port))!, using: udpParameters)
             udp = connection
+            state.audioPath = "Not reported"
             let epoch = generation
             connection.stateUpdateHandler = { [weak self] status in
-                guard let self, self.generation == epoch else { return }
+                guard let self, self.generation == epoch, self.streamID == session else { return }
                 switch status {
                 case .ready:
+                    self.state.audioPath = Self.pathLabel(self.udp?.currentPath)
                     self.state.streaming = true; self.state.status = "Streaming"
                     let completion = self.preparing; self.preparing = nil
                     completion?(.success(()))
@@ -273,6 +294,11 @@ final class AudioStreamer {
                 case .failed(let error), .waiting(let error): self.fail("UDP: \(error.localizedDescription)")
                 default: break
                 }
+            }
+            connection.pathUpdateHandler = { [weak self] path in
+                guard let self, self.generation == epoch, self.streamID == session, self.udp != nil else { return }
+                self.state.audioPath = Self.pathLabel(path)
+                self.publish()
             }
             connection.start(queue: queue)
         case "pong":
