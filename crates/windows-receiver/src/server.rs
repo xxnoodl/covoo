@@ -382,6 +382,7 @@ impl Server {
             state = "Receiver stopped";
         }
         crate::dashboard::Snapshot {
+            sampled_at: std::time::SystemTime::now(),
             state,
             stopped,
             rows,

@@ -8,6 +8,7 @@ use std::{
 };
 
 pub(crate) struct Snapshot {
+    pub sampled_at: SystemTime,
     pub state: &'static str,
     pub stopped: bool,
     pub rows: Vec<(&'static str, String)>,
@@ -86,7 +87,8 @@ fn render(snapshot: &Snapshot, updated_ms: u128) -> String {
 
 fn publish(directory: &std::path::Path, snapshot: &Snapshot) -> io::Result<()> {
     fs::create_dir_all(directory)?;
-    let updated_ms = SystemTime::now()
+    let updated_ms = snapshot
+        .sampled_at
         .duration_since(UNIX_EPOCH)
         .map_err(io::Error::other)?
         .as_millis();
@@ -103,6 +105,7 @@ mod tests {
     #[test]
     fn text_is_escaped_and_unknowns_stay_unknown() {
         let snapshot = Snapshot {
+            sampled_at: UNIX_EPOCH,
             state: "Waiting for audio",
             stopped: false,
             rows: vec![
@@ -128,11 +131,13 @@ mod tests {
         fs::write(directory.join("pairing.html"), "private pairing data").unwrap();
         let dashboard = Dashboard::start(directory.clone()).unwrap();
         dashboard.update(Snapshot {
+            sampled_at: UNIX_EPOCH,
             state: "Receiving",
             stopped: false,
             rows: vec![],
         });
         dashboard.finish(Snapshot {
+            sampled_at: UNIX_EPOCH,
             state: "Receiver stopped",
             stopped: true,
             rows: vec![],
@@ -140,6 +145,7 @@ mod tests {
         let page = fs::read_to_string(directory.join("dashboard.html")).unwrap();
         assert!(page.contains("Receiver stopped"));
         assert!(page.contains("const stopped = true"));
+        assert!(page.contains("const updated = 0"));
         assert!(!page.contains("private pairing data"));
         assert_eq!(
             fs::read_to_string(directory.join("pairing.html")).unwrap(),

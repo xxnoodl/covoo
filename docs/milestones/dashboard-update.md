@@ -17,6 +17,8 @@ On successful replacement, readers do not see partial pages. Failed writes are
 reported; old timestamps expose stale data. UI work never runs in capture,
 UDP receiving, archive workers or output callbacks. A busy writer skips display
 updates; shutdown waits for the final stopped snapshot after audio workers stop.
+Timestamps refer to metric sampling, so a delayed writer cannot refresh the age
+of an old snapshot merely by publishing it later.
 
 No new dependencies, listener, control API or unsafe Rust. The page escapes
 endpoint/error text and includes no credentials or audio. Current-take values
