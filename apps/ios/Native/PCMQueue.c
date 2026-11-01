@@ -36,6 +36,11 @@ PMQueue *pm_queue_create(void) {
 
 void pm_queue_destroy(PMQueue *q) { free(q); }
 
+void pm_queue_fanout(PMQueue *archive, PMQueue *network, const float *samples, PMBlockInfo info) {
+    if (archive) (void)pm_queue_push(archive, samples, info);
+    if (network && network != archive) (void)pm_queue_push(network, samples, info);
+}
+
 bool pm_queue_push(PMQueue *q, const float *samples, PMBlockInfo info) {
     if (!q || !samples || info.frames == 0 || info.frames > PM_MAX_FRAMES) return false;
     uint64_t w = atomic_load_explicit(&q->write_index, memory_order_relaxed);

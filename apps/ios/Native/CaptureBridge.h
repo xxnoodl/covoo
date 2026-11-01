@@ -15,6 +15,9 @@ typedef struct {
 } PMCaptureStats;
 
 PMCapture *pm_capture_create(AudioUnit unit);
+/* Borrowed network queue. Configure only before starting the AudioUnit.
+   Its owner must outlive all callbacks, including failed-disposal recovery. */
+void pm_capture_set_network_queue(PMCapture *capture, PMQueue *queue);
 /* Call only after AudioOutputUnitStop and AudioComponentInstanceDispose. */
 void pm_capture_destroy(PMCapture *capture);
 AURenderCallbackStruct pm_capture_callback(PMCapture *capture);

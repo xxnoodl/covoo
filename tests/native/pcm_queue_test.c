@@ -75,8 +75,32 @@ static void concurrent(void) {
 }
 #endif
 
+static void independent_fanout(void) {
+    PMQueue *archive = pm_queue_create(), *network = pm_queue_create();
+    assert(archive && network);
+    float input[2] = {0.25f, -0.5f}, output[2];
+    PMBlockInfo info = {.frames = 2}, received;
+    for (uint64_t i = 0; i < PM_QUEUE_SLOTS + 20; ++i) {
+        info.sequence = i;
+        pm_queue_fanout(archive, network, input, info);
+        assert(pm_queue_pop(network, output, 2, &received));
+        assert(received.sequence == i && output[0] == input[0] && output[1] == input[1]);
+    }
+    assert(pm_queue_stats(archive).dropped_blocks == 20);
+    assert(pm_queue_stats(network).dropped_blocks == 0);
+    for (uint64_t i = 0; i < PM_QUEUE_SLOTS; ++i)
+        assert(pm_queue_pop(archive, output, 2, &received));
+    for (uint64_t i = 0; i < PM_QUEUE_SLOTS + 20; ++i) {
+        pm_queue_fanout(archive, network, input, info);
+        assert(pm_queue_pop(archive, output, 2, &received));
+    }
+    assert(pm_queue_stats(network).dropped_blocks == 20);
+    pm_queue_destroy(archive); pm_queue_destroy(network);
+}
+
 int main(void) {
     boundaries();
+    independent_fanout();
 #ifndef _WIN32
     concurrent();
 #endif

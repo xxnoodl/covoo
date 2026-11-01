@@ -6,6 +6,7 @@
 struct PMCapture {
     AudioUnit unit;
     PMQueue *queue;
+    PMQueue *network_queue;
     float scratch[PM_MAX_FRAMES];
     uint64_t position;
     uint64_t sequence;
@@ -44,7 +45,7 @@ static OSStatus input_callback(void *context, AudioUnitRenderActionFlags *flags,
     increment(&c->rendered_frames, frames);
     PMBlockInfo info = { sequence, position, time->mHostTime, time->mSampleTime,
         time->mFlags, frames, mach_absolute_time() - began };
-    pm_queue_push(c->queue, c->scratch, info);
+    pm_queue_fanout(c->queue, c->network_queue, c->scratch, info);
     uint64_t elapsed = mach_absolute_time() - began;
     if (elapsed > atomic_load_explicit(&c->max_callback_ticks, memory_order_relaxed))
         atomic_store_explicit(&c->max_callback_ticks, elapsed, memory_order_relaxed);
@@ -72,6 +73,9 @@ PMCapture *pm_capture_create(AudioUnit unit) {
 
 void pm_capture_destroy(PMCapture *c) {
     if (c) { pm_queue_destroy(c->queue); free(c); }
+}
+void pm_capture_set_network_queue(PMCapture *c, PMQueue *queue) {
+    if (c) c->network_queue = queue;
 }
 AURenderCallbackStruct pm_capture_callback(PMCapture *c) {
     AURenderCallbackStruct callback = { input_callback, c };

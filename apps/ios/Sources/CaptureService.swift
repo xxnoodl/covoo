@@ -167,6 +167,9 @@ final class CaptureService {
             throw CaptureFailure(message: "Cannot allocate lock-free capture buffers")
         }
         capture = context
+        if let streamer {
+            pm_capture_set_network_queue(context, streamer.captureProducerQueue)
+        }
         var callback = pm_capture_callback(context)
         try check(AudioUnitSetProperty(instance, kAudioOutputUnitProperty_SetInputCallback,
             kAudioUnitScope_Global, 1, &callback, UInt32(MemoryLayout<AURenderCallbackStruct>.size)), "Set input callback")
@@ -282,7 +285,6 @@ final class CaptureService {
             state.rmsDB = 20 * log10(max(1e-6, sqrt(sum / Double(info.frames))))
             state.peakDB = 20 * log10(max(1e-6, peak))
             buffer.frameLength = info.frames
-            streamer?.submit(samples, info: info)
             try file.write(from: buffer)
             state.frames += UInt64(info.frames)
             let row = "\(info.sequence),\(info.sample_position),\(info.host_time),\(info.sample_time),\(info.time_flags),\(info.frames),\(info.callback_ticks)\n"
@@ -373,6 +375,7 @@ final class CaptureService {
                 "network_summary_pending":streamer != nil,
                 "latency_profile":lowLatency ? "experimental_fast" : "stable",
                 "capture_worker_interval_ms":lowLatency ? 1 : 10,
+                "network_ingress": streamer == nil ? "off" : "capture callback to independent bounded queue",
                 "frames_written": state.frames, "duration_from_written_frames_seconds": state.sampleRate > 0 ? Double(state.frames) / state.sampleRate : 0,
                 "wall_duration_seconds": startedAt.map { Date().timeIntervalSince($0) } ?? 0,
                 "callbacks": state.callbacks, "render_errors": state.renderErrors,

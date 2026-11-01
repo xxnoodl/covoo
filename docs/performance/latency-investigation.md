@@ -169,6 +169,55 @@ small nominal requests were honored. No new physical full-path result is claimed
 
 ## Escalation paths after evidence
 
+### Arrival-trace replay, October 28
+
+Receiver `1e83da3c4bd2f87e` was heard clearly by the user after selecting the
+Performance power profile, despite 15 source underruns in 52.349333 seconds.
+Added an offline replay using the production Renderer and this receiver CSV.
+It opens no device and reads no microphone samples. Fixed 48 kHz / 128-frame
+output, constant sample values and four render phases model queue consumption.
+The CSV is required to be contiguous and ordered; loss/reordering are rejected
+rather than assigned invented recovery timing. Initial setup time is removed.
+
+| Source target | Underruns across four phases |
+| --- | --- |
+| 8 ms | 12, 14, 17, 15 |
+| 12 ms | 11, 11, 11, 13 |
+| 16 ms | 4, 6, 2, 3 |
+| 20 ms | 0, 0, 0, 0 |
+
+No modeled overruns or backlog discards occurred. The 8 ms models generated
+2,816..3,072 recovery-silence output frames, spread across the take. This
+reproduces source starvation without scheduler stalls or endpoint errors.
+It supports arrival variation as a contributor, not a claim that every physical
+event or audible artifact has been explained. There is no sender-stop timestamp
+in this replay, so it stops at the last arrival and does not invent a drain.
+Real clock drift, live-worker delay and actual Windows render scheduling are
+not modeled. This is not a physical latency or sound-quality measurement.
+
+Reproduce with the existing local trace (not committed or uploaded):
+
+```powershell
+cargo run -p windows-receiver --example replay_playout --locked --release -- build/covoo-low-period/recordings/covoo-1e83da3c4bd2f87e.csv
+cargo test -p windows-receiver --examples --locked
+```
+
+New live diagnostics store the first 32 source-starvation events as output-frame
+positions, queued source frames and required source frames. Separate counters
+record startup versus recovery silence. These fixed atomic slots are allocated
+before rendering; no callback logging, locks or file writes were added. Timeline
+positions refer to generated output frames, not a shared phone/PC clock or an
+audio-device hardware position. Reports are serialized after output stops.
+Native endpoint starvation still needs separate instrumentation. Current reports
+cannot prove its absence just because output API errors are zero.
+
+Keep 8 ms as the user's clear experimental setting. Raising it to 20 ms would
+hide this trace's modeled starvation at a latency cost; it is not the final
+solution. Next isolate phone-to-network batching and receiver arrival variation,
+then compare a direct headphone diagnostic path against the cable/DAW route.
+The last supplied DAW settings reported 106 ms; no updated driver report or
+physical end-to-end measurement is available. No ASIO or driver work is added.
+
 If the driver still reports tens of milliseconds, it cannot establish the 10 ms
 goal merely by shortening covoo's queue. Investigate replacing/bypassing the
 high-latency stages. Microsoft's IAudioClient3 supports querying valid low engine

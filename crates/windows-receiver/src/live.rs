@@ -410,6 +410,23 @@ fn run(
         endpoint_failed = true;
     }
     report["underruns"] = stats.underruns.load(Ordering::Relaxed).into();
+    let event_count = stats.underruns.load(Ordering::Relaxed).min(32) as usize;
+    report["underrun_events_first_32"] = (0..event_count)
+        .map(|index| {
+            serde_json::json!({
+                "output_frame": stats.underrun_output_frames[index].load(Ordering::Relaxed),
+                "queued_source_frames": stats.underrun_queued_frames[index].load(Ordering::Relaxed),
+                "needed_source_frames": stats.underrun_needed_frames[index].load(Ordering::Relaxed)
+            })
+        })
+        .collect::<Vec<_>>()
+        .into();
+    report["underrun_timeline_note"] =
+        "Output-frame positions since renderer creation, not capture timestamps or measured latency. Source starvation only; native endpoint starvation is not counted.".into();
+    report["startup_silence_output_frames"] =
+        stats.startup_silence_frames.load(Ordering::Relaxed).into();
+    report["recovery_silence_output_frames"] =
+        stats.recovery_silence_frames.load(Ordering::Relaxed).into();
     report["overruns"] = stats.overruns.load(Ordering::Relaxed).into();
     report["discarded_backlog_frames"] = stats.discarded.load(Ordering::Relaxed).into();
     report["queue_high_water_frames"] = stats.high_water.load(Ordering::Relaxed).into();

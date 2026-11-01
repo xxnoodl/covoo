@@ -20,7 +20,15 @@ jobs:
       - run: cargo fmt --all -- --check
       - run: cargo clippy --workspace --all-targets --locked -- -D warnings
       - run: cargo test --workspace --locked
+      - run: cargo test -p windows-receiver --examples --locked
       - run: python -m unittest discover -s tests/interoperability -p "test_*.py"
+      - name: Native queue checks (Linux)
+        if: runner.os == 'Linux'
+        run: bash scripts/test-native.sh
+      - name: Native queue checks (Windows subset)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: ./scripts/test-native-windows.ps1
       - run: cargo build --workspace --release --locked
       - run: cargo run -p windows-receiver --locked
       - run: cargo run --release --locked -p audio-transport --example crypto_bench
@@ -34,10 +42,16 @@ jobs:
           Copy-Item scripts/start-daw.cmd build/windows/start-daw.cmd
           Copy-Item scripts/start-daw-fast.cmd build/windows/start-daw-fast.cmd
           Copy-Item scripts/start-daw-lowlatency.cmd build/windows/start-daw-lowlatency.cmd
+          Copy-Item scripts/start-daw-balanced.cmd build/windows/start-daw-balanced.cmd
+          Copy-Item scripts/start-headphone-check.cmd build/windows/start-headphone-check.cmd
+          Copy-Item scripts/headphone-check.ps1 build/windows/headphone-check.ps1
           Copy-Item scripts/latency-audit.py build/windows/latency-audit.py
+          Copy-Item scripts/session-dashboard.py build/windows/session-dashboard.py
+          Copy-Item scripts/network-snapshot.ps1 build/windows/network-snapshot.ps1
           Copy-Item docs/testing/m3-device.md build/windows/DAW-setup.md
           Copy-Item docs/performance/latency-investigation.md build/windows/Latency-check.md
           Copy-Item docs/testing/low-period-output.md build/windows/Low-period-test.md
+          Copy-Item docs/testing/direct-headphones.md build/windows/Headphone-check.md
           Copy-Item licenses build/windows/licenses -Recurse
       - uses: actions/upload-artifact@v4
         if: runner.os == 'Windows'

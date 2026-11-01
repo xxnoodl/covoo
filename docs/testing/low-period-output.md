@@ -30,6 +30,12 @@ Supply phone files, receiver WAV/JSON/CSV plus `.live.json`, and whether live
 monitoring improves or crackles. Then repeat a few starts/stops if the first take
 works. No new long-duration test is needed to identify the initial behavior.
 
+The first native take had 25 source underruns at the 8 ms target despite exact
+archived PCM. For comparison, `start-daw-balanced.cmd` uses 16 ms with the same
+128-frame native period. Close the previous receiver before starting it. Keep
+the phone and DAW settings unchanged and export the DAW take as WAV if crackling
+persists. The additional 8 ms is diagnostic; no improvement is yet verified.
+
 Read-only query (doesn't start playback):
 
 ```powershell

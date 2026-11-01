@@ -105,7 +105,11 @@ final class AudioStreamer {
         }
     }
 
-    /// Only CaptureService's worker is the producer. Object ownership must cover this call.
+    /// Borrowed by CaptureBridge before AudioUnitStart. CaptureService retains
+    /// this object until the unit is disposed. Never mix submit() with that producer.
+    var captureProducerQueue: OpaquePointer { pcmQueue }
+
+    /// Synthetic producers only, while no AudioUnit owns captureProducerQueue.
     func submit(_ samples: UnsafePointer<Float>, info: PMBlockInfo) {
         _ = pm_queue_push(pcmQueue, samples, info)
     }

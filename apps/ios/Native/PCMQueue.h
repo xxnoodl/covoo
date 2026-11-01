@@ -30,6 +30,9 @@ typedef struct {
 PMQueue *pm_queue_create(void);
 void pm_queue_destroy(PMQueue *queue);
 bool pm_queue_push(PMQueue *queue, const float *samples, PMBlockInfo info);
+/* One callback is the producer of both queues. Either may be NULL.
+   Each queue retains its independent single consumer and overflow counters. */
+void pm_queue_fanout(PMQueue *archive, PMQueue *network, const float *samples, PMBlockInfo info);
 bool pm_queue_pop(PMQueue *queue, float *samples, uint32_t capacity, PMBlockInfo *info);
 PMQueueStats pm_queue_stats(const PMQueue *queue);
 #endif

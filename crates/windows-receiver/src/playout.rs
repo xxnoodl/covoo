@@ -11,6 +11,11 @@ use std::sync::{
 #[derive(Default)]
 pub struct OutputStats {
     pub underruns: AtomicU64,
+    pub underrun_output_frames: [AtomicU64; 32],
+    pub underrun_queued_frames: [AtomicU64; 32],
+    pub underrun_needed_frames: [AtomicU64; 32],
+    pub startup_silence_frames: AtomicU64,
+    pub recovery_silence_frames: AtomicU64,
     pub overruns: AtomicU64,
     pub discarded: AtomicU64,
     pub queued: AtomicU64,
@@ -46,6 +51,8 @@ pub struct Renderer {
     integral: f64,
     correction: f64,
     output_rate: u32,
+    output_position: u64,
+    started: bool,
     pub stats: Arc<OutputStats>,
 }
 
@@ -104,6 +111,8 @@ impl Renderer {
                 integral: 0.0,
                 correction: 0.0,
                 output_rate,
+                output_position: 0,
+                started: false,
                 stats,
             },
         ))
@@ -159,7 +168,21 @@ impl Renderer {
 
     /// Called once per mono output frame. Never locks, allocates, logs or does I/O.
     pub fn next_sample(&mut self) -> f32 {
+        let value = self.render_sample();
+        self.output_position = self.output_position.saturating_add(1);
+        value
+    }
+
+    fn render_sample(&mut self) -> f32 {
         if self.offset == self.available && !self.refill() {
+            if !self.stats.ending.load(Ordering::Relaxed) {
+                let counter = if self.started {
+                    &self.stats.recovery_silence_frames
+                } else {
+                    &self.stats.startup_silence_frames
+                };
+                counter.fetch_add(1, Ordering::Relaxed);
+            }
             return 0.0;
         }
         let sample = self.output[0][self.offset];
@@ -194,6 +217,7 @@ impl Renderer {
                 return false;
             }
             self.primed = true;
+            self.started = true;
         }
         let dt = 128.0 / f64::from(self.output_rate);
         self.filtered += (queued as f64 - self.filtered) * dt.min(1.0);
@@ -219,7 +243,13 @@ impl Renderer {
         }
         let needed = self.resampler.input_frames_next();
         if queued < needed && !ending {
-            self.stats.underruns.fetch_add(1, Ordering::Relaxed);
+            let index = self.stats.underruns.fetch_add(1, Ordering::Relaxed) as usize;
+            if index < self.stats.underrun_output_frames.len() {
+                self.stats.underrun_output_frames[index]
+                    .store(self.output_position, Ordering::Relaxed);
+                self.stats.underrun_queued_frames[index].store(queued as u64, Ordering::Relaxed);
+                self.stats.underrun_needed_frames[index].store(needed as u64, Ordering::Relaxed);
+            }
             self.reset();
             return false;
         }
@@ -257,6 +287,38 @@ impl Renderer {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn starvation_evidence_excludes_startup_and_bounds_event_storage() {
+        let (mut input, mut output) = Renderer::new(48000, 48000, 8).unwrap();
+        output.begin_callback(128, None);
+        for _ in 0..128 {
+            assert_eq!(output.next_sample(), 0.0);
+        }
+        assert_eq!(
+            output.stats.startup_silence_frames.load(Ordering::Relaxed),
+            128
+        );
+        for _ in 0..40 {
+            for _ in 0..384 {
+                input.push(0.25).unwrap();
+            }
+            for _ in 0..1024 {
+                output.next_sample();
+            }
+        }
+        assert_eq!(output.stats.underruns.load(Ordering::Relaxed), 40);
+        assert!(output.stats.recovery_silence_frames.load(Ordering::Relaxed) > 0);
+        assert!(output.stats.underrun_output_frames[0].load(Ordering::Relaxed) >= 128);
+        assert!(
+            output.stats.underrun_output_frames[31].load(Ordering::Relaxed)
+                > output.stats.underrun_output_frames[0].load(Ordering::Relaxed)
+        );
+        assert!(
+            output.stats.underrun_queued_frames[0].load(Ordering::Relaxed)
+                < output.stats.underrun_needed_frames[0].load(Ordering::Relaxed)
+        );
+    }
 
     #[test]
     fn idle_underflow_overload_and_fresh_take_are_bounded() {
