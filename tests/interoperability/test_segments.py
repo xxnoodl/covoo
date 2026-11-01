@@ -22,6 +22,16 @@ def write_wav(path, samples, start, phone=False):
 
 
 class SegmentTests(unittest.TestCase):
+    def test_missing_edges_and_malformed_report_are_explicit(self):
+        with tempfile.TemporaryDirectory() as folder:
+            phone, pc = [Path(folder) / name for name in ['phone.wav', 'pc.wav']]
+            write_wav(phone, [0.125] * 12, 0, phone=True)
+            write_wav(pc, [0.125] * 4, 4)
+            self.assertEqual(verify(phone, [pc])['missing_ranges_half_open'], [[0, 4], [8, 12]])
+            pc.with_suffix('.json').write_text('[]')
+            with self.assertRaisesRegex(ValueError, 'PC report must be an object'):
+                verify(phone, [pc])
+
     def test_exact_segments_do_not_hide_missing_middle(self):
         with tempfile.TemporaryDirectory() as folder:
             root = Path(folder)

@@ -10,7 +10,9 @@ wav_info = runpy.run_path(str(Path(__file__).with_name('compare-recordings.py'))
 
 def verify(phone_path, pc_paths):
     phone_path = Path(phone_path)
-    report = json.loads(phone_path.with_suffix('.json').read_text())
+    report = json.loads(phone_path.with_suffix('.json').read_text(encoding='utf-8'))
+    if not isinstance(report, dict):
+        raise ValueError('Phone report must be an object')
     rate, offset, total = wav_info(phone_path)
     if total == 0 or report.get('frames_written') != total or any(report.get(k) != 0 for k in
             ['dropped_frames', 'render_errors', 'discontinuities', 'unwritten_rendered_frames']):
@@ -35,7 +37,9 @@ def verify(phone_path, pc_paths):
                 position += frames
         if start is None or position - start != count or position > total:
             raise ValueError('Segment timeline does not match WAV or phone bounds')
-        pc_report = json.loads(path.with_suffix('.json').read_text())
+        pc_report = json.loads(path.with_suffix('.json').read_text(encoding='utf-8'))
+        if not isinstance(pc_report, dict):
+            raise ValueError('PC report must be an object')
         with phone_path.open('rb') as source, path.open('rb') as received:
             source.seek(offset + start * 4)
             received.seek(pc_offset)
