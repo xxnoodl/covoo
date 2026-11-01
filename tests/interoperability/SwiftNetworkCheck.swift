@@ -62,7 +62,8 @@ struct SwiftNetworkCheck {
                     let streamingClient = client!
                     if reconnect, let index = CommandLine.arguments.firstIndex(of: "--drop-trigger"),
                         index + 1 < CommandLine.arguments.count {
-                        try? Data().write(to: URL(fileURLWithPath: CommandLine.arguments[index + 1]))
+                        do { try Data().write(to: URL(fileURLWithPath: CommandLine.arguments[index + 1])) }
+                        catch { print("Could not arm proxy drop: \(error)"); exit(1) }
                     }
                     DispatchQueue.global().async {
                         for block in 0..<(reconnect ? 600 : 200) {

@@ -15,6 +15,16 @@ final-session acknowledgment separately. Interrupted takes get an explicit
 "PC recording may be incomplete" status even if the final session saves.
 The network packet/control protocol is unchanged.
 
+New phone reports carry report_schema_version 2. Older unversioned reports
+used network_completed for the last session only; retain that distinction when
+reviewing historical captures. This is a report-schema change, not a wire change.
+
+`scripts/compare-segments.py` checks a complete phone reference against multiple
+PC files using each CSV's sample positions. It reports missing ranges and rejects
+overlap, corruption and discontinuous references. It keeps segment byte integrity,
+whole-take coverage and stop-summary evidence separate rather than treating an
+exact partial recording as an exact complete take.
+
 Control NWConnection waiting states are nonfatal and can recover on path changes.
 Keep that connection until ready, failed or its bounded deadline; do not discard
 it on every waiting notification. Fatal failures still discard the old key/session

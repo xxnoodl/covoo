@@ -47,6 +47,8 @@ jobs:
           Copy-Item scripts/headphone-check.ps1 build/windows/headphone-check.ps1
           Copy-Item scripts/latency-audit.py build/windows/latency-audit.py
           Copy-Item scripts/session-dashboard.py build/windows/session-dashboard.py
+          Copy-Item scripts/compare-recordings.py build/windows/compare-recordings.py
+          Copy-Item scripts/compare-segments.py build/windows/compare-segments.py
           Copy-Item scripts/network-snapshot.ps1 build/windows/network-snapshot.ps1
           Copy-Item docs/testing/m3-device.md build/windows/DAW-setup.md
           Copy-Item docs/performance/latency-investigation.md build/windows/Latency-check.md

@@ -368,7 +368,7 @@ final class CaptureService {
         if !validWAV, state.frames > 0 { state.status = "Recording file validation failed. See report." }
         let renderedFrames = finalStats?.rendered_frames ?? 0
         if let reportURL {
-            let report: [String: Any] = ["sample_rate_hz": state.sampleRate,
+            let report: [String: Any] = ["report_schema_version": 2, "sample_rate_hz": state.sampleRate,
                 "actual_io_buffer_ms": state.bufferMS, "actual_input_channels": state.hardwareChannels,
                 "input": state.input, "device_side_format": state.deviceFormat,
                 "client_format": "mono Float32", "wire_transport": streamer == nil ? "off" : "TLS control + encrypted UDP",
