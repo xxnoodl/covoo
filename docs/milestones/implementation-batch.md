@@ -63,7 +63,8 @@ used MSVC 14.44.35207 and SDK 10.0.26100.0.
 passed its iOS job for `5c1e073`: native queue checks, stable/fast Swift networking
 with 96,000 exact samples, unsigned simulator/device builds, six simulator
 tests and unsigned packaging. The iOS source is unchanged in `c313aee`;
-its redundant iOS job was still running when these results were recorded.
+its redundant iOS job also completed successfully. All three jobs in run
+41260498140 passed for the final runtime source.
 
 The initial Windows C checks failed because the test runner selected an SDK
 include directory without C runtime headers. SDK selection now filters for
