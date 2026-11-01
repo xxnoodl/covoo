@@ -4,11 +4,17 @@ $vswhere = Join-Path ${env:ProgramFiles(x86)} 'Microsoft Visual Studio\Installer
 $installation = & $vswhere -products '*' -latest -property installationPath
 if (-not $installation) { throw 'Visual Studio C++ Build Tools not found.' }
 $tools = Get-ChildItem (Join-Path $installation 'VC\Tools\MSVC') -Directory |
-    Sort-Object Name -Descending | Select-Object -First 1
+    Where-Object { $_.Name -match '^\d+\.\d+\.\d+$' -and
+        (Test-Path -LiteralPath (Join-Path $_.FullName 'bin\Hostx64\x64\cl.exe')) } |
+    Sort-Object { [version]$_.Name } -Descending | Select-Object -First 1
 $kits = Join-Path ${env:ProgramFiles(x86)} 'Windows Kits\10'
 $sdk = Get-ChildItem (Join-Path $kits 'Include') -Directory |
-    Sort-Object Name -Descending | Select-Object -First 1
+    Where-Object { $_.Name -match '^\d+\.\d+\.\d+\.\d+$' -and
+        (Test-Path -LiteralPath (Join-Path $_.FullName 'ucrt\assert.h')) -and
+        (Test-Path -LiteralPath (Join-Path $kits "Lib\$($_.Name)\ucrt\x64\ucrt.lib")) } |
+    Sort-Object { [version]$_.Name } -Descending | Select-Object -First 1
 if (-not $tools -or -not $sdk) { throw 'C++ tools or Windows SDK not found.' }
+Write-Host "C tools $($tools.Name), SDK $($sdk.Name)"
 $build = Join-Path $repo 'build'
 New-Item -ItemType Directory -Force -Path $build | Out-Null
 $compiler = Join-Path $tools.FullName 'bin\Hostx64\x64\cl.exe'
