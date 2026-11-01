@@ -14,13 +14,35 @@ final class CaptureModel: ObservableObject {
     private var streamer: AudioStreamer?
     private let service = CaptureService()
     private var observers: [NSObjectProtocol] = []
+    private var backgroundFinalizationTask: UIBackgroundTaskIdentifier = .invalid
 
     init() {
         observe(AVAudioSession.interruptionNotification, message: "Audio interrupted. Start again when ready.")
         observe(AVAudioSession.mediaServicesWereLostNotification, message: "Audio service lost. Start again when ready.")
         observe(AVAudioSession.mediaServicesWereResetNotification, message: "Audio service reset. Start again when ready.")
         // M1 records in the foreground. Background/lock support is a later acceptance test.
-        observe(UIApplication.didEnterBackgroundNotification, message: "App backgrounded. Recording stopped.")
+        observers.append(NotificationCenter.default.addObserver(forName: UIApplication.willResignActiveNotification,
+            object: nil, queue: .main) { [weak self] _ in
+                // Notification delivery is explicitly on main. Request the lease
+                // before the transition, not in a later queued task.
+                MainActor.assumeIsolated { self?.beginBackgroundFinalization() }
+            })
+        observers.append(NotificationCenter.default.addObserver(forName: UIApplication.didEnterBackgroundNotification,
+            object: nil, queue: .main) { [weak self] _ in
+                Task { @MainActor [weak self] in
+                    guard let self else { return }
+                    self.beginBackgroundFinalization()
+                    self.service.stop(reason: "App backgrounded. Recording stopped.")
+                    if !self.state.recording && !self.requesting { self.pauseIdleConnection() }
+                }
+            })
+        observers.append(NotificationCenter.default.addObserver(forName: UIApplication.didBecomeActiveNotification,
+            object: nil, queue: .main) { [weak self] _ in
+                Task { @MainActor [weak self] in
+                    self?.streamer?.resumeAfterBackground()
+                    self?.endBackgroundFinalization()
+                }
+            })
         observers.append(NotificationCenter.default.addObserver(forName: AVAudioSession.routeChangeNotification,
             object: nil, queue: .main) { [weak self] notification in
                 let reason = (notification.userInfo?[AVAudioSessionRouteChangeReasonKey] as? NSNumber)?.uintValue
@@ -29,6 +51,34 @@ final class CaptureModel: ObservableObject {
                     Task { @MainActor [weak self] in self?.service.routeChanged() }
                 }
             })
+    }
+
+    private func beginBackgroundFinalization() {
+        guard (state.recording || requesting), backgroundFinalizationTask == .invalid else { return }
+        backgroundFinalizationTask = UIApplication.shared.beginBackgroundTask(withName: "Finish covoo recording") { [weak self] in
+            self?.endBackgroundFinalization()
+        }
+    }
+
+    private func endBackgroundFinalization() {
+        guard backgroundFinalizationTask != .invalid else { return }
+        let identifier = backgroundFinalizationTask
+        backgroundFinalizationTask = .invalid
+        UIApplication.shared.endBackgroundTask(identifier)
+    }
+
+    private func pauseIdleConnection() {
+        guard let streamer else { endBackgroundFinalization(); return }
+        streamer.pauseWhenIdle { [weak self] in
+            Task { @MainActor in
+                guard let self else { return }
+                // Foreground can return while the network pause was queued.
+                if UIApplication.shared.applicationState != .background {
+                    self.streamer?.resumeAfterBackground()
+                }
+                self.endBackgroundFinalization()
+            }
+        }
     }
 
     private func observe(_ name: Notification.Name, message: String) {
@@ -59,6 +109,10 @@ final class CaptureModel: ObservableObject {
                 Task { @MainActor in
                     self?.state = value
                     self?.requesting = value.finalizing
+                    if !value.recording && !value.finalizing,
+                        UIApplication.shared.applicationState == .background {
+                        self?.pauseIdleConnection()
+                    }
                 }
             }
         }
@@ -95,5 +149,11 @@ final class CaptureModel: ObservableObject {
         streamState = StreamState()
     }
 
-    deinit { for observer in observers { NotificationCenter.default.removeObserver(observer) } }
+    deinit {
+        for observer in observers { NotificationCenter.default.removeObserver(observer) }
+        let identifier = backgroundFinalizationTask
+        if identifier != .invalid {
+            DispatchQueue.main.async { UIApplication.shared.endBackgroundTask(identifier) }
+        }
+    }
 }

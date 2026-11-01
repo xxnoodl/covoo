@@ -51,6 +51,8 @@ def audit(log=None, receiver=None, phone=None):
                  'native_event_gap_ms_max', 'thread_scheduler']
         keys += ['underrun_events_first_32', 'underrun_timeline_note',
                  'startup_silence_output_frames', 'recovery_silence_output_frames']
+        keys += ['asrc_adjustment_ppm_min', 'asrc_adjustment_ppm_max',
+                 'device_clock_rate_ratio', 'device_clock_errors', 'device_clock_note']
         result['receiver'] = {k: receiver.get(k) for k in keys}
     if phone is not None:
         keys = ['latency_profile', 'actual_io_buffer_ms', 'capture_worker_interval_ms',

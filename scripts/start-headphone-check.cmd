@@ -1,4 +1,4 @@
 @echo off
 cd /d "%~dp0"
-powershell.exe -NoProfile -File "%~dp0headphone-check.ps1"
+powershell.exe -NoProfile -File "%~dp0headphone-check.ps1" %*
 pause

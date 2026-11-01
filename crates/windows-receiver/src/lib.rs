@@ -1,3 +1,4 @@
+pub mod device_clock;
 pub mod endpoint_ingress;
 pub mod endpoint_packet;
 pub mod engine_period;

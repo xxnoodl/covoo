@@ -6,8 +6,36 @@ acceptance gates still apply before dependent work or milestone sign-off.
 
 ## Deferred comparisons
 
+- [ ] Recovery update retest: same controlled USB outage, compare all PC segments
+  against local offsets, measure actual cable-out and resume times, and check
+  network_completed stays false when a take was interrupted even if final ACK succeeds.
+- [ ] Screen-lock update: check finite cleanup assertion, saved PCM, completion ACK,
+  idle pause and foreground reconnect. Also exercise assertion denial/expiration
+  and a quick background/foreground transition. Background capture remains off.
+- [ ] Headphone update: compare default legacy and explicitly selected native
+  backend, ordinary PC playback before/after, repeated start/stop and unplug reset.
+  Inspect device-clock estimate and ASRC extrema. Stop on persistent pitch changes;
+  client Stop/Reset is not yet a verified fix and does not reset the whole device.
+
+- [ ] Mid-take USB outage: reduce reconnect-to-audio delay and clarify whole-take
+  completion reporting. E19AA29C preserved 54.987 seconds locally, but PC sessions
+  907335b5550f9caf / 04bf6acfada77edc omit 26.989 seconds. Phone network_completed
+  is true for final session, not proof of complete PC take. Account for 211,072
+  sent-but-unreceived frames separately from sender queue/drop counters.
+
+- [ ] Fix screen-lock completion/heartbeat handling and retest: take 642ABBDC /
+  33b69ee7e1d7a8be preserved all 643,200 frames bit-for-bit, but the phone
+  reported a heartbeat timeout despite a valid final summary on the PC.
+- [x] Fresh take after idle lock/unlock: user completed the sequence; phone
+  39B435B5 / receiver a32e32496193e44a passed full comparison for 878,592
+  frames (18.304 seconds), with clean network completion and no capture/network loss.
+
 - [ ] Compare direct wired headphones with the Ableton route.
   See [steps](docs/testing/direct-headphones.md). Keep reports and note perceived delay.
+- [x] Direct-headphone subjective delay comparison: user reports almost immediate
+  monitoring, substantially better than the DAW route. Physical latency remains unmeasured.
+- [ ] Investigate reported headphone pitch change: establish whether it affects
+  Covoo voice, other PC audio or both, and whether closing the receiver restores it.
 - [ ] Compare 8, 16 and 20 ms source buffers on the same route.
   Check underrun events, recovery silence and audible gaps.
 - [ ] Compare a DAW WAV export with phone and receiver originals if crackling returns.
@@ -19,6 +47,9 @@ acceptance gates still apply before dependent work or milestone sign-off.
   phone/PC PCM, capture-to-network age, queue drops and callback work with the
   previous build. Exercise slow local storage, network backpressure and repeated
   start/stop. Verify disposal failure cannot free a queue still used by callbacks.
+- [x] New queue-path archive integrity: take 49B00045 / e2f41ed475d2cc15,
+  125.274667 seconds, 6,013,184 exact PCM frames and zero capture/transport loss.
+  Live output still had 53 underruns and two overruns; this is not a stability pass.
 - [ ] Dashboard: compare generated session rows against real report files;
   missing diagnostics must display as unknown. It is an offline snapshot.
 - [ ] Native ingress: port the reference queue to a reviewed kernel implementation;
@@ -36,6 +67,14 @@ acceptance gates still apply before dependent work or milestone sign-off.
 - [ ] M4 USB feasibility: verify the actual network interface/route and measure
   throughput, jitter and stability against Wi-Fi. Successful takes alone do not
   establish the route or latency.
+- [x] Controlled USB connectivity: session 74d0aaf9784ea2a0, 22.432 seconds,
+  explicit TCP/UDP binding on the active USB Apple Ethernet adapter, established
+  phone connection and Wi-Fi/Bluetooth disconnected. Receiver continuity passed.
+- [x] USB reference comparison: phone 0F8060F6 / receiver 74d0aaf9784ea2a0,
+  1,076,736 frames over 22.432 seconds matched bit-for-bit. Zero capture/network loss.
+- [x] USB reconnect between takes: user confirms automatic reconnection without
+  receiver restart. Next take CD85CD0F / b18306491f8fbc77 matched all 1,173,120
+  frames (24.44 seconds), with zero capture/network loss. Mid-take outage remains untested.
 - [ ] Check separate iOS control/audio path labels during Wi-Fi/USB changes;
   compare OS-reported interface types with Windows binding and traffic evidence.
 - [ ] M5 latency: common-reference physical measurement, clock drift and long-term

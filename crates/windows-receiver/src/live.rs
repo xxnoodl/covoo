@@ -431,6 +431,19 @@ fn run(
     report["discarded_backlog_frames"] = stats.discarded.load(Ordering::Relaxed).into();
     report["queue_high_water_frames"] = stats.high_water.load(Ordering::Relaxed).into();
     report["asrc_adjustment_ppm"] = (stats.ratio_ppm.load(Ordering::Relaxed) as i64 - 10000).into();
+    report["asrc_adjustment_ppm_min"] =
+        (stats.ratio_ppm_min.load(Ordering::Relaxed) as i64 - 10000).into();
+    report["asrc_adjustment_ppm_max"] =
+        (stats.ratio_ppm_max.load(Ordering::Relaxed) as i64 - 10000).into();
+    let clock_ratio = stats.device_clock_ratio_ppb.load(Ordering::Relaxed);
+    report["device_clock_rate_ratio"] = if !stats.device_clock_ratio_valid.load(Ordering::Relaxed) {
+        serde_json::Value::Null
+    } else {
+        (clock_ratio as f64 / 1e9).into()
+    };
+    report["device_clock_samples"] = stats.device_clock_samples.load(Ordering::Relaxed).into();
+    report["device_clock_errors"] = stats.device_clock_errors.load(Ordering::Relaxed).into();
+    report["device_clock_note"] = "OS device-position/QPC estimate, not physical pitch, input drift or end-to-end latency. Null means unavailable or invalid.".into();
     report["output_errors"] = stats.errors.load(Ordering::Relaxed).into();
     report["endpoint_errors"] = stats.backend_errors.load(Ordering::Relaxed).into();
     report["tail_drain_complete"] = drained.into();

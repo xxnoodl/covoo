@@ -28,6 +28,12 @@ struct StreamState {
     var captureAgeBlocks: UInt64 = 0
     var captureAgeSumMS = 0.0
     var captureAgeMaxMS = 0.0
+    var takeInterrupted = false
+    var sentFrames: UInt64 = 0
+    var unconfirmedSentFrames: UInt64 = 0
+    var segmentsStarted: UInt64 = 0
+    var finalSegmentAcknowledged = false
+    var takeCompleted = false
 }
 
 /// Network work runs on queue, never on RemoteIO. PCM enters through a C SPSC queue.
@@ -54,7 +60,7 @@ final class AudioStreamer {
     private var timer: DispatchSourceTimer?
     private var controlBuffer = Data()
     private var retryAt = 0.0
-    private var retryDelay = 1.0
+    private var retryDelay = 0.25
     private var generation: UInt64 = 0
     private var connectionDeadline = 0.0
     private var lastControl = 0.0
@@ -83,6 +89,9 @@ final class AudioStreamer {
     private var queueDropBaseline: UInt64 = 0
     private var protection = PacketProtection()
     private let lowLatency: Bool
+    private var delivery = TakeDelivery()
+    private var pausedForBackground = false
+    private var awaitingStopAcknowledgment = false
 
     init(pairing: PairingDetails, packetProtection: Bool = true, lowLatency: Bool = false, update: @escaping (StreamState) -> Void) throws {
         guard let storage = pm_queue_create() else { throw WireFailure.invalid("Cannot allocate network queue") }
@@ -108,12 +117,47 @@ final class AudioStreamer {
     func connect() {
         queue.async { [self] in
             enabled = true
-            let timer = DispatchSource.makeTimerSource(queue: queue)
-            timer.schedule(deadline: .now(), repeating: .milliseconds(lowLatency ? 1 : 5),
-                leeway: .microseconds(lowLatency ? 100 : 1000))
-            timer.setEventHandler { [weak self] in self?.tick() }
-            self.timer = timer
-            timer.resume()
+            pausedForBackground = false
+            startTimer()
+            attempt()
+        }
+    }
+
+    private func startTimer() {
+        guard timer == nil else { return }
+        let timer = DispatchSource.makeTimerSource(queue: queue)
+        timer.schedule(deadline: .now(), repeating: .milliseconds(lowLatency ? 1 : 5),
+            leeway: .microseconds(lowLatency ? 100 : 1000))
+        timer.setEventHandler { [weak self] in self?.tick() }
+        self.timer = timer
+        timer.resume()
+    }
+
+    /// Called only after capture/finalization is idle. No reconnect loop while suspended.
+    func pauseWhenIdle(completion: @escaping () -> Void) {
+        queue.async { [self] in
+            if rate == nil, !state.streaming, endingCompletion == nil, !awaitingStopAcknowledgment {
+                pausedForBackground = true
+                generation &+= 1
+                control?.cancel(); control = nil
+                udp?.cancel(); udp = nil
+                timer?.cancel(); timer = nil
+                state.connected = false; state.transport = "Not connected"
+                state.rttMS = nil; pendingPing = nil
+                state.status = "Paused while app is in background"
+                publish()
+            }
+            completion()
+        }
+    }
+
+    func resumeAfterBackground() {
+        queue.async { [self] in
+            guard pausedForBackground else { return }
+            pausedForBackground = false
+            guard enabled else { return }
+            retryDelay = 0.25
+            startTimer()
             attempt()
         }
     }
@@ -129,11 +173,12 @@ final class AudioStreamer {
 
     func begin(sampleRate: UInt32, completion: @escaping (Result<Void, Error>) -> Void) {
         queue.async { [self] in
-            guard state.connected, rate == nil, !ending else {
+            guard state.connected, rate == nil, !ending, !awaitingStopAcknowledgment else {
                 completion(.failure(WireFailure.invalid("Connect to the receiver before streaming.")))
                 return
             }
             rate = sampleRate
+            delivery = TakeDelivery()
             clearPCM()
             state.packets = 0; state.bytes = 0; state.droppedFrames = 0
             state.redundantPackets = 0; state.skippedCopies = 0
@@ -165,6 +210,7 @@ final class AudioStreamer {
     func disconnect() {
         queue.async { [self] in
             enabled = false
+            awaitingStopAcknowledgment = false
             generation &+= 1
             control?.cancel(); control = nil
             udp?.cancel(); udp = nil
@@ -182,7 +228,7 @@ final class AudioStreamer {
     private var now: Double { pm_ticks_to_seconds(mach_absolute_time()) }
 
     private func attempt() {
-        guard enabled else { return }
+        guard enabled, !pausedForBackground else { return }
         generation &+= 1
         let attempt = generation
         state.identityRejected = false
@@ -213,7 +259,11 @@ final class AudioStreamer {
                 self.lastControl = self.now
                 self.sendControl(["type":"hello", "version":1, "token":self.pairing.token, "device":"iPhone"])
                 self.receiveControl(connection, generation: attempt)
-            case .waiting(let error), .failed(let error):
+            case .waiting(let error):
+                // Waiting is nonfatal: Network.framework retries when the path returns.
+                self.state.status = "Waiting for local network: \(error.localizedDescription)"
+                self.publish()
+            case .failed(let error):
                 self.fail(self.state.identityRejected ? "Receiver certificate fingerprint mismatch." : "Connection: \(error.localizedDescription). Check receiver and Local Network permission.")
             default: break
             }
@@ -261,7 +311,7 @@ final class AudioStreamer {
             state.transport = "Encrypted UDP / TLS control"
             state.controlPath = Self.pathLabel(control?.currentPath)
             state.status = "Connected"
-            retryDelay = 1
+            retryDelay = 0.25
             if rate != nil { sendStart() }
             publish()
         case "started":
@@ -271,6 +321,7 @@ final class AudioStreamer {
                 let port = message["udp_port"] as? Int, port > 0, port <= 65535,
                 (message["frames"] as? Int) == 240 else { throw WireFailure.invalid("Invalid stream negotiation") }
             streamID = session
+            delivery.startSegment()
             key = SymmetricKey(data: secret)
             counter = 0; firstPosition = 0; lastPosition = 0
             clearCopies()
@@ -283,7 +334,7 @@ final class AudioStreamer {
             state.audioPath = "Not reported"
             let epoch = generation
             connection.stateUpdateHandler = { [weak self] status in
-                guard let self, self.generation == epoch, self.streamID == session else { return }
+                guard let self, self.generation == epoch, self.streamID == session, self.udp != nil else { return }
                 switch status {
                 case .ready:
                     self.state.audioPath = Self.pathLabel(self.udp?.currentPath)
@@ -307,8 +358,12 @@ final class AudioStreamer {
                 self.pendingPing = nil
             }
         case "stopped":
+            guard awaitingStopAcknowledgment else { throw WireFailure.invalid("Unexpected stop acknowledgment") }
+            awaitingStopAcknowledgment = false
+            delivery.acknowledgeFinalSegment()
             state.completedStreams += 1
-            state.streaming = false; state.status = "Connected; receiver recording saved"
+            state.streaming = false
+            state.status = snapshot().takeCompleted ? "Connected; receiver recording saved" : "Connected; PC recording may have gaps"
             udp?.cancel(); udp = nil; key = nil
             finishEnding(.success(snapshot()))
             publish()
@@ -382,6 +437,7 @@ final class AudioStreamer {
                 lastPosition = position + UInt64(count)
                 expectedPosition = lastPosition
                 state.packets += 1
+                delivery.sent(frames: UInt64(count))
                 sendAudio(packet, redundant: false)
                 if state.protectionEnabled { protection.schedule(packet, at: now) }
             } catch { fail(error.localizedDescription); return }
@@ -416,6 +472,7 @@ final class AudioStreamer {
     private func sendStop() {
         ending = false
         rate = nil
+        awaitingStopAcknowledgment = true
         sendControl(["type":"stop", "packets":counter, "first_position":firstPosition, "last_position":lastPosition])
     }
 
@@ -439,6 +496,8 @@ final class AudioStreamer {
 
     private func fail(_ message: String) {
         guard enabled else { return }
+        if rate != nil || state.streaming || endingCompletion != nil { delivery.interrupt() }
+        awaitingStopAcknowledgment = false
         let wasConnected = state.connected
         generation &+= 1
         control?.cancel(); control = nil
@@ -455,11 +514,12 @@ final class AudioStreamer {
         enabled = !state.identityRejected
         state.status = message + (enabled ? " Retrying." : " Scan a fresh pairing QR.")
         retryAt = now + retryDelay
-        retryDelay = min(5, retryDelay*2)
+        retryDelay = min(2, retryDelay*2)
         publish()
     }
 
     private func tick() {
+        guard !pausedForBackground else { return }
         if control == nil, enabled, now >= retryAt { attempt() }
         if control != nil, !state.connected, now > connectionDeadline { fail("Pairing timed out") }
         if state.connected {
@@ -476,7 +536,7 @@ final class AudioStreamer {
             clearCopies()
             if inflight == 0 { sendStop() } else { fail("Stream stop timed out") }
         }
-        if endingCompletion != nil, !ending, now > endDeadline + 5 { fail("Receiver finalization timed out"); return }
+        if awaitingStopAcknowledgment, now > endDeadline + 5 { fail("Receiver finalization timed out"); return }
         if state.streaming { pump() }
         else if preparing == nil { clearPCM() }
         if now - lastPublish >= 0.25 { publish() }
@@ -487,6 +547,12 @@ final class AudioStreamer {
         snapshot.skippedCopies += protection.skipped
         snapshot.sessionSeconds = state.connected ? now - (connectedAt ?? now) : 0
         snapshot.droppedFrames += pm_queue_stats(pcmQueue).dropped_frames - queueDropBaseline
+        snapshot.takeInterrupted = delivery.interrupted
+        snapshot.sentFrames = delivery.sentFrames
+        snapshot.unconfirmedSentFrames = delivery.unconfirmedSentFrames
+        snapshot.segmentsStarted = delivery.segmentsStarted
+        snapshot.finalSegmentAcknowledged = delivery.finalSegmentAcknowledged
+        snapshot.takeCompleted = delivery.completed(senderDroppedFrames: snapshot.droppedFrames, sendErrors: snapshot.sendErrors)
         return snapshot
     }
 

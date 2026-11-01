@@ -21,6 +21,12 @@ pub struct OutputStats {
     pub queued: AtomicU64,
     pub high_water: AtomicU64,
     pub ratio_ppm: AtomicU64,
+    pub ratio_ppm_min: AtomicU64,
+    pub ratio_ppm_max: AtomicU64,
+    pub device_clock_ratio_ppb: AtomicU64,
+    pub device_clock_ratio_valid: AtomicBool,
+    pub device_clock_samples: AtomicU64,
+    pub device_clock_errors: AtomicU64,
     pub callbacks: AtomicU64,
     pub native_event_count: AtomicU64,
     pub native_event_gap_ns_max: AtomicU64,
@@ -88,6 +94,8 @@ impl Renderer {
         let output = resampler.output_buffer_allocate(true);
         let stats = Arc::new(OutputStats::default());
         stats.ratio_ppm.store(10000, Ordering::Relaxed);
+        stats.ratio_ppm_min.store(10000, Ordering::Relaxed);
+        stats.ratio_ppm_max.store(10000, Ordering::Relaxed);
         stats.callback_frames_min.store(u64::MAX, Ordering::Relaxed);
         stats.driver_lead_ns_min.store(u64::MAX, Ordering::Relaxed);
         stats
@@ -229,10 +237,14 @@ impl Renderer {
         }
         let ratio = 1.0 - self.correction;
         // Offset encoding keeps the callback on universally available unsigned atomics.
-        self.stats.ratio_ppm.store(
-            ((ratio - 1.0) * 1e6 + 10000.0).round() as u64,
-            Ordering::Relaxed,
-        );
+        let encoded_ppm = ((ratio - 1.0) * 1e6 + 10000.0).round() as u64;
+        self.stats.ratio_ppm.store(encoded_ppm, Ordering::Relaxed);
+        self.stats
+            .ratio_ppm_min
+            .fetch_min(encoded_ppm, Ordering::Relaxed);
+        self.stats
+            .ratio_ppm_max
+            .fetch_max(encoded_ppm, Ordering::Relaxed);
         if self
             .resampler
             .set_resample_ratio_relative(ratio, true)

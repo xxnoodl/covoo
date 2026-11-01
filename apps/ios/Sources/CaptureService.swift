@@ -411,7 +411,13 @@ final class CaptureService {
                         report["network_summary_pending"] = false
                         switch result {
                         case .success(let network):
-                            report["network_completed"] = true
+                            report["network_completed"] = network.takeCompleted
+                            report["network_final_session_acknowledged"] = network.finalSegmentAcknowledged
+                            report["network_take_interrupted"] = network.takeInterrupted
+                            report["network_segments_started"] = network.segmentsStarted
+                            report["network_frames_submitted"] = network.sentFrames
+                            report["network_unconfirmed_sent_frames"] = network.unconfirmedSentFrames
+                            report["network_delivery_note"] = "Submitted datagrams are not proof of receiver delivery. Unconfirmed frames are not a measured loss count. Compare PC reports and PCM."
                             report["network_control_path"] = network.controlPath
                             report["network_audio_path"] = network.audioPath
                             report["network_packets_sent"] = network.packets
@@ -432,7 +438,8 @@ final class CaptureService {
                             }
                             if let rtt = network.rttMS { report["control_rtt_ms"] = rtt }
                             else { report["control_rtt_ms"] = NSNull() }
-                            self.state.status = localStatus + "; receiver recording saved"
+                            self.state.status = localStatus + (network.takeCompleted
+                                ? "; receiver recording saved" : "; PC recording may be incomplete. See report.")
                         case .failure(let error):
                             report["network_completed"] = false
                             report["network_stop_error"] = error.localizedDescription

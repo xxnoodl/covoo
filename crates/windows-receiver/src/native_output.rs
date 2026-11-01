@@ -218,6 +218,12 @@ fn run(
     }
     let event = client.set_get_eventhandle().map_err(io::Error::other)?;
     let render = client.get_audiorenderclient().map_err(io::Error::other)?;
+    let clock = client.get_audioclock().ok();
+    let frequency = clock
+        .as_ref()
+        .and_then(|clock| clock.get_frequency().ok())
+        .filter(|frequency| *frequency != 0);
+    let mut clock_evidence = crate::device_clock::DeviceClock::default();
     let (producer, mut renderer) =
         Renderer::new(source_rate, rate, options.buffer_ms).map_err(io::Error::other)?;
     let stats = renderer.stats.clone();
@@ -250,17 +256,26 @@ fn run(
     report["resampler_delay_output_frames"] = renderer.filter_delay_frames().into();
     report["render_quantum_note"] = "Callback frame counters are native render submissions for this backend, not CPAL callbacks".into();
     report["latency"] = "not measured".into();
+    report["device_clock_frequency"] = frequency.into();
+    report["shutdown_policy"] =
+        "Stop then Reset this client stream; no endpoint configuration changes".into();
+    if frequency.is_none() {
+        stats.device_clock_errors.fetch_add(1, Ordering::Relaxed);
+    }
     // Reviewed pinned Windows implementation registers MMCSS "Audio" (not the
     // "Pro Audio" text found in some upstream documentation). Per-thread only.
     report["thread_scheduler"] = "MMCSS Audio".into();
     let _priority = AudioPriority::new(selected, rate)?;
     client.start_stream().map_err(io::Error::other)?;
     if ready.send(Ok((producer, stats.clone(), report))).is_err() {
-        let _ = client.stop_stream();
+        if client.stop_stream().is_ok() {
+            let _ = client.reset_stream();
+        }
         return Ok(());
     }
     let result = (|| -> io::Result<()> {
         let mut last_event = Instant::now();
+        let mut next_clock_sample = Instant::now();
         while !stop.load(Ordering::Relaxed) {
             // OS event waiting is outside rendering, with bounded shutdown and
             // a watchdog. No application locks, logs or file/network operations
@@ -288,6 +303,21 @@ fn run(
             if stop.load(Ordering::Relaxed) {
                 break;
             }
+            // Bounded optional OS clock diagnostics, outside PCM generation.
+            if Instant::now() >= next_clock_sample {
+                if let Some(clock) = &clock {
+                    match clock.get_position() {
+                        Ok((position, qpc)) => {
+                            clock_evidence.observe(position, qpc);
+                            stats.device_clock_samples.fetch_add(1, Ordering::Relaxed);
+                        }
+                        Err(_) => {
+                            stats.device_clock_errors.fetch_add(1, Ordering::Relaxed);
+                        }
+                    }
+                }
+                next_clock_sample = Instant::now() + Duration::from_millis(250);
+            }
             let padding = client.get_current_padding().map_err(io::Error::other)?;
             let frames = crate::engine_period::frames_to_submit(capacity, padding, selected)
                 .map_err(io::Error::other)? as usize;
@@ -307,7 +337,25 @@ fn run(
         }
         Ok(())
     })();
-    let stopped = client.stop_stream().map_err(io::Error::other);
+    if let Some(ratio) = frequency.and_then(|frequency| clock_evidence.ratio(frequency)) {
+        stats
+            .device_clock_ratio_ppb
+            .store((ratio * 1e9).round() as u64, Ordering::Relaxed);
+        stats
+            .device_clock_ratio_valid
+            .store(true, Ordering::Relaxed);
+    }
+    stats
+        .device_clock_errors
+        .fetch_add(clock_evidence.invalid_samples, Ordering::Relaxed);
+    let stopped = client
+        .stop_stream()
+        .map_err(|error| io::Error::other(format!("Stop output stream: {error}")))
+        .and_then(|()| {
+            client
+                .reset_stream()
+                .map_err(|error| io::Error::other(format!("Reset output stream: {error}")))
+        });
     if result.is_err() || stopped.is_err() {
         stats.errors.fetch_add(1, Ordering::Relaxed);
         stats.backend_errors.fetch_add(1, Ordering::Relaxed);
