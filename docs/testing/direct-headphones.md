@@ -43,7 +43,7 @@ If audio comes from speakers, stop the phone stream immediately and correct
 the physical route. The script's text checks cannot detect which jack or
 transducer is connected. Unsupported initialization/format errors remain explicit.
 If PowerShell blocks this script, keep the error; do not change security policy
-for this test. All processing remains the existing native backend.
+for this test. The selected backend remains explicit throughout the test.
 
 To return to DAW use, close the direct receiver, reopen Ableton and run
 `start-daw-lowlatency.cmd`. Scan that receiver's new QR.

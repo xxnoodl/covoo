@@ -74,7 +74,8 @@ acceptance gates still apply before dependent work or milestone sign-off.
   1,076,736 frames over 22.432 seconds matched bit-for-bit. Zero capture/network loss.
 - [x] USB reconnect between takes: user confirms automatic reconnection without
   receiver restart. Next take CD85CD0F / b18306491f8fbc77 matched all 1,173,120
-  frames (24.44 seconds), with zero capture/network loss. Mid-take outage remains untested.
+  frames (24.44 seconds), with zero capture/network loss. Mid-take recovery is
+  tracked separately above; the tested outage left missing PC audio.
 - [ ] Check separate iOS control/audio path labels during Wi-Fi/USB changes;
   compare OS-reported interface types with Windows binding and traffic evidence.
 - [ ] M5 latency: common-reference physical measurement, clock drift and long-term

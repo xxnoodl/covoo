@@ -50,7 +50,11 @@ builds and simulator tests. The following documentation/helper revision exposed
 an intermittent reconnect-test timeout. Its producer stopped after a fixed time
 even if reconnection was still pending, and ignored stop errors. The test now
 waits for a resumed stream before stopping, reports stop failures, and retains
-receiver logs on failure. This test correction still needs macOS CI validation.
+receiver logs on failure. The corrected revision 7d7b208 passed all three CI jobs:
+[Windows, Linux and macOS](https://github.com/xxnoodl/covoo/actions/runs/41363097423).
+This includes the Swift/Rust recovery check, unsigned simulator/device builds,
+and simulator recording tests. These results do not validate physical USB timing
+or the headset issue.
 
 The segment tool reproduced the supplied E19AA29C outage result: both received
 segments bit-exact, 1,295,488 source frames absent from supplied PC files,
