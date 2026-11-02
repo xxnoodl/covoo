@@ -35,6 +35,8 @@ after completion. No hardware success is inferred from these tests.
 The macOS SDK callback test substitutes input rendering without starting any
 AudioUnit. It checks actual C fanout plus monitor gain/mute, unchanged archive
 and network PCM, silent output on input failure, and output-topology rejection.
+It also checks the record-only callback with no monitor or output buffer,
+including input-render flag propagation and silent PCM fanout.
 
 ## Hardware validation
 

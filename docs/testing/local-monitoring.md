@@ -33,3 +33,5 @@ Reports include requested mode, last output name, processed/silent monitoring
 frames and last gain/mute values. These are software evidence, not proof of
 actual headphone sound. Silent frames include mute, zero gain and safety gating;
 they do not count natural microphone silence or separate individual reasons.
+These counters cover successfully pulled input blocks. Render-error blocks are
+tracked by the separate capture error counter, even if output was zeroed.

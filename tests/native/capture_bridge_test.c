@@ -6,17 +6,19 @@
 #include <stdio.h>
 
 static bool fail_render;
+static bool mark_silent;
 static unsigned renders;
 static float sample(unsigned i) { return (float)((int)(i % 31) - 15) / 32.0f; }
 
 OSStatus AudioUnitRender(AudioUnit unit, AudioUnitRenderActionFlags *flags,
     const AudioTimeStamp *time, UInt32 bus, UInt32 frames, AudioBufferList *data) {
-    (void)unit; (void)flags; (void)time;
+    (void)unit; (void)time;
     ++renders;
     assert(bus == 1 && data->mNumberBuffers == 1);
     if (fail_render) return kAudio_ParamError;
     float *output = data->mBuffers[0].mData;
-    for (UInt32 i = 0; i < frames; ++i) output[i] = sample(i);
+    if (mark_silent) *flags |= kAudioUnitRenderAction_OutputIsSilence;
+    for (UInt32 i = 0; i < frames; ++i) output[i] = mark_silent ? 0 : sample(i);
     return noErr;
 }
 
@@ -63,6 +65,20 @@ int main(void) {
     PMCaptureStats stats = pm_capture_stats(capture);
     assert(stats.rendered_frames == 256 && stats.monitor_frames == 256);
     assert(stats.monitor_silent_frames == 128 && stats.render_errors == 2);
+    pm_capture_destroy(capture);
+    // Default record-only callback keeps input flags and fanout behavior.
+    capture = pm_capture_create((AudioUnit)(uintptr_t)1);
+    assert(capture);
+    pm_capture_set_network_queue(capture, network);
+    callback = pm_capture_callback(capture);
+    fail_render = false; mark_silent = true; flags = 0;
+    assert(callback.inputProc(callback.inputProcRefCon, &flags, &time, 1, 128, NULL) == noErr);
+    assert(flags & kAudioUnitRenderAction_OutputIsSilence);
+    PMBlockInfo info;
+    assert(pm_capture_pop(capture, archived, 128, &info));
+    assert(pm_queue_pop(network, received, 128, &info));
+    for (unsigned i = 0; i < 128; ++i) assert(archived[i] == 0 && received[i] == 0);
+    assert(pm_capture_stats(capture).monitor_frames == 0);
     pm_capture_destroy(capture);
     pm_queue_destroy(network);
     puts("capture bridge synthetic monitoring tests passed");
