@@ -75,11 +75,12 @@ device/OS details, account privilege or active-take PCM evidence were supplied.
 The user also found that tapping the shared iOS Remember/Forget row disconnects
 the session. The subsequent e663989 row repair is now user-confirmed working for
 both buttons. See [the pairing button repair](pairing-buttons-update.md).
-Standard-user policy, update/data retention, Start menu details, phone relaunch,
-Windows reboot, route changes and broader M3-M6 physical gates remain in todo.md.
+Standard-user policy, update/data retention, Start menu details, Windows reboot,
+route changes and broader M3-M6 physical gates remain in todo.md.
 
 The user later reports that the connection holds after receiver Stop/Start during
 an active take. This is connection-state observation, not measured resumed packet
 delivery or complete PC audio. Saved pairing did not survive closing/reopening
-the older iPhone app. The repaired buttons now work according to the user;
-persistence after fully closing/reopening the repaired app is still pending.
+the older iPhone app. The user confirms both repaired buttons work and remembered
+pairing survives fully closing/reopening covoo: tapping Connect reconnects right
+away without rescanning. App relaunch persistence is accepted on this setup.

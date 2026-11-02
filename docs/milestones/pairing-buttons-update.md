@@ -30,7 +30,8 @@ including Remember, app close/reopen, Forget and another close/reopen. All eleve
 existing simulator tests, unsigned simulator/device builds, encrypted Swift/Rust
 checks and native sanitizer/callback checks also passed. No physical acceptance
 is inferred. The user subsequently confirmed both repaired buttons work on their
-phone; full app close/reopen persistence remains separate in todo.md.
+phone. They also confirm Remember survives fully closing/reopening covoo and
+connects immediately after tapping Connect, without rescanning.
 
 [Updated unsigned iPhone package](https://github.com/xxnoodl/covoo/actions/runs/41402040877/artifacts/13121613707)
 contains the repair; extract and sign through the established iloader process.
@@ -47,10 +48,11 @@ actual resumed packet delivery remain unverified.
 The user reports that saved pairing does not survive fully closing and reopening
 covoo in the shared-button build. The button defect may explain it, but that is
 an inference. After installing the repair, the user confirms Remember and Forget
-now work. This accepts the two button actions on their phone; they did not
-separately confirm persistence after fully closing/reopening the repaired app.
-Windows reboot, revoke rejecting old links and endpoint removal remain separate
-checks.
+now work. They further confirm that fully closing and reopening covoo restores
+the remembered receiver and connects right away when tapping Connect, without
+rescanning. Button operation and app relaunch persistence are user-accepted on
+this setup. Windows reboot, revoke rejecting old links and endpoint removal remain
+separate checks.
 These observations do not accept the broader audio milestones.
 
 References: [Apple borderless button style](https://developer.apple.com/documentation/swiftui/borderlessbuttonstyle),

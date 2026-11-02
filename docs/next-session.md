@@ -10,8 +10,9 @@ all eleven unit tests. The new IPA is linked in the pairing repair report. The
 user reports that pairing does not survive closing/reopening the old app, and
 that the connection holds after receiver Stop/Start during an active take.
 The user now confirms the repaired Remember and Forget buttons work on their
-phone. Persistence after fully closing/reopening the repaired app and whole-take
-PC continuity remain pending.
+phone. They also confirm remembered pairing survives fully closing/reopening
+covoo and connects immediately after tapping Connect, without rescanning.
+Whole-take PC continuity remains pending.
 
 ## Read first
 
@@ -38,7 +39,8 @@ PC continuity remain pending.
    Stop preserves desktop identity; Revoke requires a stopped receiver and rotates
    certificate/token on next Start. Phone Forget deletes only its local copy.
    Address changes need rescanning. Never trust discovery to replace a pin.
-4. Batch signed-device pairing, closing/reopening covoo, revoke, real take close/stop, interface and
+4. Remember/Forget and iOS app relaunch persistence are user-confirmed. Batch
+   remaining revoke, Windows reboot, real take finalization, interface and
    endpoint failure tests in todo.md. M3-M6 acceptance remains open.
 
 ## Current state
