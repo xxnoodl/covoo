@@ -10,12 +10,16 @@
 #define GENERATION_MAX (UINT64_MAX >> 18)
 struct PMMonitorGate { _Atomic uint64_t state, owners; };
 
+static bool monitor_atomics_are_lock_free(PMMonitorGate *gate) {
+    return atomic_is_lock_free(&gate->state) && atomic_is_lock_free(&gate->owners);
+}
+
 PMMonitorGate *pm_monitor_create(void) {
     PMMonitorGate *gate = calloc(1, sizeof(*gate));
     if (!gate) return NULL;
     atomic_init(&gate->state, 0);
     atomic_init(&gate->owners, 1);
-    if (!atomic_is_lock_free(&gate->state) || !atomic_is_lock_free(&gate->owners)) {
+    if (!monitor_atomics_are_lock_free(gate)) {
         free(gate); return NULL;
     }
     return gate;
