@@ -43,6 +43,13 @@ acceptance gates still apply before dependent work or milestone sign-off.
 
 ## Required acceptance tests, scheduled later
 
+- [ ] Ableton latency update: simultaneous cable recording and explicitly selected
+  wired PC dry monitor, monitor Off with Live In/Auto for effects, 40/16/8 ms
+  independent profile comparisons, missing/removed monitor versus main endpoint,
+  repeated takes and matched phone/PC/DAW files. Do not infer complete PC audio
+  or Live-effect latency from a working dry monitor. Physical timing and headphone
+  pitch/stability checks remain open. See docs/testing/ableton-monitoring.md.
+
 - [x] Windows install and uninstall: user reports both work on their setup while
   testing the supplied 312b687 package. Account privilege, retained data and the
   update path were not separately reported.
@@ -129,6 +136,10 @@ acceptance gates still apply before dependent work or milestone sign-off.
 
 ## Implementation still required
 
+- [ ] Recordings access, deferred by user: Open recordings currently opens the
+  parent containing opaque per-run folders. Open the current session's recording
+  folder directly. Discuss playback of the current recording or a side-panel
+  playlist later; no playback/browser implementation is requested yet.
 - [ ] Native WaveRT endpoint, restricted feeder, build-only WDK CI and installer rollback.
 - [ ] Remaining desktop metrics and installation acceptance. Per-user packaging,
   native launcher, CPU/memory observations and isolated setup checks are implemented

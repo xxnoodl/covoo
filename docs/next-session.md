@@ -26,22 +26,32 @@ Whole-take PC continuity remains pending.
 
 ## Next work
 
-1. Work is on `desktop-setup`. Revision e663989 passed all three CI jobs:
-   https://github.com/xxnoodl/covoo/actions/runs/41402040877. The repaired iPhone
-   artifact is 13121613707 in that run; device retesting can be batched later.
-   The local Windows ZIP remains `build/covoo-windows-312b687.zip`; its engine
-   is unchanged by this phone UI repair. No local Mac exists.
-2. Continue remaining metrics and independent milestone work. The desktop exposes
-   receiver process CPU/memory and the existing legacy 40 ms route. Receiver RTT
-   and phone route/format are unavailable; experimental presets remain in CLI.
-   No automatic drivers, firewall or execution-policy changes.
-3. Keep paired identity fail-closed, certificate pinning and fresh take keys.
-   Stop preserves desktop identity; Revoke requires a stopped receiver and rotates
-   certificate/token on next Start. Phone Forget deletes only its local copy.
-   Address changes need rescanning. Never trust discovery to replace a pin.
-4. Remember/Forget and iOS app relaunch persistence are user-confirmed. Batch
-   remaining revoke, Windows reboot, real take finalization, interface and
-   endpoint failure tests in todo.md. M3-M6 acceptance remains open.
+1. User prioritized Ableton latency. Read `docs/milestones/ableton-latency-update.md`,
+   `docs/testing/ableton-monitoring.md` and ADR 0010. The November 2 Live log still
+   reports FL Studio ASIO 48 kHz/256 samples, 46 ms input/60 ms output. These are
+   logged estimates, not measured full-path delay. No settings were changed.
+2. Independent dry PC monitoring now accompanies the main cable route. It defaults
+   off with explicit endpoint/profile selection. Main and monitor queues/clocks/
+   errors are independent; profiles request legacy 40 ms or native 16/8 ms. This
+   supports dry recording, not faster monitoring of Ableton effects. Physical
+   coexistence and latency remain unverified. The earlier single-output app could
+   not feed headphones and the cable simultaneously.
+3. Inspect CI and the packaged UI for this change and record exact results. Work
+   is on `desktop-setup`. Previous phone repair e663989 passed all CI jobs:
+   https://github.com/xxnoodl/covoo/actions/runs/41402040877. Its iPhone app remains
+   compatible; no phone update is needed for these Windows output options.
+4. Ableton-effect monitoring still depends on the driver/input/output path. Native
+   capture prerequisites and approved feasibility research can proceed, but no
+   ASIO implementation, driver installation, aggregation or security changes.
+   Do not call receiver buffer targets physical latency or change DAW settings
+   automatically. Physical comparisons stay deferred in todo.md.
+5. User-confirmed: Windows install/uninstall, Stop/window close, receiver Stop/
+   Start without rescanning, repaired Remember/Forget and app relaunch persistence.
+   Whole-take PC continuity, revoke, Windows reboot, endpoint removal and M3-M6
+   physical acceptance remain open. Preserve pinning and fail-closed identity.
+6. Recordings UX remains deferred: open the current session instead of opaque run
+   folders; discuss playback/playlist later. Do not add playback work now.
+   Remaining general telemetry follows the latency priority.
 
 ## Current state
 

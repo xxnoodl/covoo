@@ -98,6 +98,13 @@ pub fn smoke() -> io::Result<()> {
         serde_json::from_slice(&serde_json::to_vec(&stored)?)?;
     server.identity = restored.identity()?;
     server.token = restored.token();
+    // A failed optional monitor must not prevent authenticated recording/ACKs.
+    server = server.with_monitor(crate::live::RouteOptions {
+        device: "covoo-synthetic-missing-monitor-838dc909".into(),
+        buffer_ms: 40,
+        device_buffer_frames: None,
+        backend: crate::live::AudioBackend::Legacy,
+    });
     let address = server.address;
     let certificate = server.identity.certificate.clone();
     let mut bad_pin = client(address, &certificate, false)?;
@@ -268,6 +275,8 @@ pub fn smoke() -> io::Result<()> {
                 serde_json::from_slice(&std::fs::read(base.with_extension("json"))?)?;
             assert_eq!(report["packets_not_written"], u64::from(stream == 3));
             assert_eq!(report["pcm_continuity_verified"], stream != 3);
+            assert!(report["monitor_start_error"].is_string());
+            assert_eq!(report["monitor_queue_drops"], 0);
             assert_eq!(
                 report["silence_frames_inserted"],
                 if stream == 3 { 240 } else { 0 }

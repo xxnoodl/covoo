@@ -58,6 +58,36 @@ struct Active {
     last_arrival: Option<Instant>,
     live: Option<mpsc::SyncSender<AudioPacket>>,
     live_stats: Option<Arc<crate::playout::OutputStats>>,
+    monitor: Option<mpsc::SyncSender<AudioPacket>>,
+    monitor_stats: Option<Arc<crate::playout::OutputStats>>,
+}
+
+struct TakeWorkers {
+    archive: thread::JoinHandle<()>,
+    metrics: Arc<Mutex<Metrics>>,
+    output: Option<LiveSession>,
+    monitor: Option<LiveSession>,
+}
+
+impl TakeWorkers {
+    fn ending(&self) {
+        for session in self.output.iter().chain(self.monitor.iter()) {
+            session.stats.ending.store(true, Ordering::Relaxed);
+        }
+    }
+    fn finish(self) {
+        let _ = self.archive.join();
+        if let Some(output) = self.output {
+            if let Err(error) = output.finish() {
+                self.metrics.lock().unwrap().error = Some(error.to_string());
+            }
+        }
+        if let Some(monitor) = self.monitor {
+            if let Err(error) = monitor.finish() {
+                eprintln!("Dry monitor failed: {error}. Main route/archive results are separate.");
+            }
+        }
+    }
 }
 
 pub struct Server {
@@ -70,6 +100,7 @@ pub struct Server {
     stop: Arc<AtomicBool>,
     output: PathBuf,
     route: Option<RouteOptions>,
+    monitor_route: Option<RouteOptions>,
     control_owner: Arc<Mutex<()>>,
 }
 
@@ -94,6 +125,7 @@ impl Server {
             stop: Arc::new(AtomicBool::new(false)),
             output,
             route: None,
+            monitor_route: None,
             control_owner: Arc::new(Mutex::new(())),
         })
     }
@@ -102,6 +134,10 @@ impl Server {
     }
     pub fn with_route(mut self, route: RouteOptions) -> Self {
         self.route = Some(route);
+        self
+    }
+    pub fn with_monitor(mut self, route: RouteOptions) -> Self {
+        self.monitor_route = Some(route);
         self
     }
     pub fn pairing_link(&self, host: &str) -> String {
@@ -168,9 +204,20 @@ impl Server {
                     let port = self.address.port();
                     let stop = self.stop.clone();
                     let route = self.route.clone();
+                    let monitor_route = self.monitor_route.clone();
                     handlers.push(thread::spawn(move || {
                         if let Err(error) = control(
-                            socket, peer, config, token, owner, active, output, port, stop, route,
+                            socket,
+                            peer,
+                            config,
+                            token,
+                            owner,
+                            active,
+                            output,
+                            port,
+                            stop,
+                            route,
+                            monitor_route,
                         ) {
                             if !matches!(
                                 error.kind(),
@@ -256,6 +303,12 @@ impl Server {
                     .map_or_else(|| "File recording only".into(), |r| r.device.clone()),
             ),
             ("Physical monitoring latency", "Not measured".into()),
+            (
+                "Selected dry monitor",
+                self.monitor_route
+                    .as_ref()
+                    .map_or_else(|| "Off".into(), |r| r.device.clone()),
+            ),
             ("Control RTT", "Not collected by receiver".into()),
             ("CPU and memory", "Not collected".into()),
             (
@@ -312,6 +365,17 @@ impl Server {
                 ),
                 ("Archive queue drops", stats.queue_drops.to_string()),
                 ("Live queue drops", stats.live_queue_drops.to_string()),
+                (
+                    "Dry monitor queue drops",
+                    stats.monitor_queue_drops.to_string(),
+                ),
+                (
+                    "Dry monitor start error",
+                    stats
+                        .monitor_start_error
+                        .clone()
+                        .unwrap_or_else(|| "None reported".into()),
+                ),
                 (
                     "Packet delay variation estimate",
                     if stats.jitter_observations > 0 {
@@ -383,6 +447,26 @@ impl Server {
                     ),
                 ]);
             }
+            if let Some(monitor) = &active.monitor_stats {
+                rows.extend([
+                    (
+                        "Dry monitor output errors",
+                        monitor.errors.load(Ordering::Relaxed).to_string(),
+                    ),
+                    (
+                        "Dry monitor underruns",
+                        monitor.underruns.load(Ordering::Relaxed).to_string(),
+                    ),
+                    (
+                        "Dry monitor effective source target",
+                        format!(
+                            "{:.2} ms",
+                            monitor.effective_target.load(Ordering::Relaxed) as f64 * 1000.0
+                                / f64::from(active.rate)
+                        ),
+                    ),
+                ]);
+            }
         }
         if stopped {
             state = "Receiver stopped";
@@ -408,6 +492,7 @@ fn control(
     udp_port: u16,
     stop: Arc<AtomicBool>,
     route: Option<RouteOptions>,
+    monitor_route: Option<RouteOptions>,
 ) -> io::Result<()> {
     let connection = rustls::ServerConnection::new(config).map_err(io::Error::other)?;
     let socket = DeadlineSocket {
@@ -444,7 +529,7 @@ fn control(
         },
     )?;
     println!("Authenticated phone connected");
-    let mut recording = None;
+    let mut recording: Option<TakeWorkers> = None;
     let result = (|| -> io::Result<()> {
         while !stop.load(Ordering::Relaxed) {
             tls.sock.deadline = Instant::now() + Duration::from_secs(5);
@@ -481,9 +566,25 @@ fn control(
                     } else {
                         None
                     };
+                    let mut monitor_start_error = None;
+                    let monitor = monitor_route.as_ref().and_then(|options| {
+                        match LiveSession::start(options.clone(), sample_rate,
+                            output.join(format!("covoo-{id:016x}.monitor.json"))) {
+                            Ok(session) => Some(session),
+                            Err(error) => {
+                                let message = error.to_string();
+                                eprintln!("Dry monitor unavailable: {message}. Recording/main route continue.");
+                                monitor_start_error = Some(message);
+                                None
+                            }
+                        }
+                    });
                     let recorder = Recorder::new(&output, id, sample_rate)?;
                     let (sender, receiver) = mpsc::sync_channel(64);
-                    let metrics = Arc::new(Mutex::new(Metrics::default()));
+                    let metrics = Arc::new(Mutex::new(Metrics {
+                        monitor_start_error,
+                        ..Metrics::default()
+                    }));
                     let worker_metrics = metrics.clone();
                     let worker =
                         thread::spawn(move || record_worker(recorder, receiver, worker_metrics));
@@ -499,8 +600,15 @@ fn control(
                         last_arrival: None,
                         live: live.as_ref().map(|s| s.sender.clone()),
                         live_stats: live.as_ref().map(|s| s.stats.clone()),
+                        monitor: monitor.as_ref().map(|s| s.sender.clone()),
+                        monitor_stats: monitor.as_ref().map(|s| s.stats.clone()),
                     });
-                    recording = Some((worker, metrics, sample_rate, live));
+                    recording = Some(TakeWorkers {
+                        archive: worker,
+                        metrics,
+                        output: live,
+                        monitor,
+                    });
                     write_message(
                         &mut tls,
                         &Message::Started {
@@ -516,24 +624,18 @@ fn control(
                     first_position,
                     last_position,
                 } if recording.is_some() => {
-                    if let Some((_, _, _, Some(live))) = recording.as_ref() {
-                        live.stats.ending.store(true, Ordering::Relaxed);
-                    }
-                    if let Some((_, metrics, _, _)) = recording.as_ref() {
-                        let mut metrics = metrics.lock().unwrap();
+                    if let Some(take) = recording.as_ref() {
+                        take.ending();
+                        let mut metrics = take.metrics.lock().unwrap();
                         metrics.final_packets = Some(packets);
                         metrics.final_first = first_position;
                         metrics.final_end = last_position;
                     }
                     thread::sleep(Duration::from_millis(100));
                     registry.lock().unwrap().take();
-                    let (worker, metrics, _, live) = recording.take().unwrap();
-                    let _ = worker.join();
-                    if let Some(live) = live {
-                        if let Err(error) = live.finish() {
-                            metrics.lock().unwrap().error = Some(error.to_string());
-                        }
-                    }
+                    let take = recording.take().unwrap();
+                    let metrics = take.metrics.clone();
+                    take.finish();
                     if let Some(error) = &metrics.lock().unwrap().error {
                         write_message(
                             &mut tls,
@@ -559,11 +661,9 @@ fn control(
         Ok(())
     })();
     registry.lock().unwrap().take();
-    if let Some((worker, _, _, live)) = recording {
-        let _ = worker.join();
-        if let Some(live) = live {
-            let _ = live.finish();
-        }
+    if let Some(take) = recording {
+        take.ending();
+        take.finish();
     }
     result
 }
@@ -680,14 +780,32 @@ fn udp_loop(socket: UdpSocket, registry: Arc<Mutex<Option<Active>>>, stop: Arc<A
             samples: samples[..usize::from(header.format.frames())].to_vec(),
             arrival,
         };
-        if let Some(live) = &active.live {
-            if live.try_send(packet.clone()).is_err() {
-                stats.live_queue_drops += 1;
-            }
-        }
-        if active.sender.try_send(packet).is_err() {
-            stats.queue_drops += 1;
-        }
+        fan_out(
+            &active.sender,
+            active.live.as_ref(),
+            active.monitor.as_ref(),
+            packet,
+            &mut stats,
+        );
+    }
+}
+
+/// Non-real-time UDP worker fanout. Each sink has independent bounded backpressure.
+fn fan_out(
+    archive: &mpsc::SyncSender<AudioPacket>,
+    output: Option<&mpsc::SyncSender<AudioPacket>>,
+    monitor: Option<&mpsc::SyncSender<AudioPacket>>,
+    packet: AudioPacket,
+    stats: &mut Metrics,
+) {
+    if output.is_some_and(|sender| sender.try_send(packet.clone()).is_err()) {
+        stats.live_queue_drops += 1;
+    }
+    if monitor.is_some_and(|sender| sender.try_send(packet.clone()).is_err()) {
+        stats.monitor_queue_drops += 1;
+    }
+    if archive.try_send(packet).is_err() {
+        stats.queue_drops += 1;
     }
 }
 
@@ -701,6 +819,53 @@ pub fn default_host() -> io::Result<IpAddr> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn stalled_or_disconnected_outputs_do_not_block_archive_or_other_sink() {
+        let packet = AudioPacket {
+            counter: 0,
+            header: audio_protocol::Header {
+                discontinuity: false,
+                stream_id: 7,
+                sequence: 0,
+                sample_position: 0,
+                capture_ns: 0,
+                format: audio_core::MonoFormat::new(48000, 4).unwrap(),
+            },
+            samples: vec![0.125, -0.5, 0.75, 0.0],
+            arrival: Instant::now(),
+        };
+        let (archive, archive_rx) = mpsc::sync_channel(1);
+        let (output, output_rx) = mpsc::sync_channel(1);
+        let (monitor, monitor_rx) = mpsc::sync_channel(1);
+        monitor.try_send(packet.clone()).unwrap();
+        let mut metrics = Metrics::default();
+        fan_out(
+            &archive,
+            Some(&output),
+            Some(&monitor),
+            packet.clone(),
+            &mut metrics,
+        );
+        assert_eq!(archive_rx.try_recv().unwrap().samples, packet.samples);
+        assert_eq!(output_rx.try_recv().unwrap().samples, packet.samples);
+        assert_eq!(metrics.monitor_queue_drops, 1);
+        assert_eq!(metrics.queue_drops, 0);
+        assert_eq!(metrics.live_queue_drops, 0);
+        drop(output_rx);
+        monitor_rx.try_recv().unwrap();
+        fan_out(
+            &archive,
+            Some(&output),
+            Some(&monitor),
+            packet.clone(),
+            &mut metrics,
+        );
+        assert_eq!(archive_rx.try_recv().unwrap().samples, packet.samples);
+        assert_eq!(monitor_rx.try_recv().unwrap().samples, packet.samples);
+        assert_eq!(metrics.live_queue_drops, 1);
+        assert_eq!(metrics.queue_drops, 0);
+    }
     #[test]
     fn dashboard_distinguishes_stalled_audio_from_idle_without_inventing_measurements() {
         let server = Server::bind(
@@ -725,6 +890,8 @@ mod tests {
             last_arrival: Some(Instant::now() - Duration::from_secs(3)),
             live: None,
             live_stats: None,
+            monitor: None,
+            monitor_stats: None,
         });
         let snapshot = server.status_snapshot(Duration::from_secs(4), false);
         assert_eq!(snapshot.state, "Take active; waiting for audio");

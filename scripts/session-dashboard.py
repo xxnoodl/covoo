@@ -20,7 +20,7 @@ def render(folder):
     errors = []
     # Only archive report filenames; never load pairing.html or arbitrary JSON.
     for path in sorted(Path(folder).glob('covoo-*.json')):
-        if path.name.endswith('.live.json'):
+        if path.name.endswith(('.live.json', '.monitor.json')):
             continue
         try:
             if path.stat().st_size > 1_048_576:

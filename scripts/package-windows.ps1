@@ -14,7 +14,7 @@ if (-not (Test-Path -LiteralPath $compiler)) { throw 'Windows .NET Framework C# 
 if ($LASTEXITCODE -ne 0) { throw 'Desktop launcher build failed.' }
 [IO.File]::Copy([IO.Path]::GetFullPath($ReceiverPath), (Join-Path $Destination 'covoo-receiver.exe'))
 # Explicit input list: no recordings, local settings, credentials or build logs.
-$scripts = @('desktop.ps1', 'desktop-common.ps1', 'start-desktop.cmd',
+$scripts = @('desktop.ps1', 'desktop-common.ps1', 'receiver-profiles.ps1', 'daw-latency.ps1', 'start-desktop.cmd',
     'install-covoo.cmd', 'install-covoo.ps1', 'install-common.ps1', 'uninstall-covoo.cmd', 'uninstall-covoo.ps1',
     'start-receiver.cmd', 'start-daw.cmd', 'start-daw-fast.cmd', 'start-daw-lowlatency.cmd',
     'start-daw-balanced.cmd', 'start-headphone-check.cmd', 'headphone-check.ps1',
@@ -22,6 +22,7 @@ $scripts = @('desktop.ps1', 'desktop-common.ps1', 'start-desktop.cmd',
 foreach ($name in $scripts) { [IO.File]::Copy((Join-Path $PSScriptRoot $name), (Join-Path $Destination $name)) }
 $documents = @{
     'docs/testing/desktop-setup.md' = 'Desktop-setup.md'
+    'docs/testing/ableton-monitoring.md' = 'Ableton-monitoring.md'
     'docs/testing/m3-device.md' = 'DAW-setup.md'
     'docs/performance/latency-investigation.md' = 'Latency-check.md'
     'docs/testing/low-period-output.md' = 'Low-period-test.md'

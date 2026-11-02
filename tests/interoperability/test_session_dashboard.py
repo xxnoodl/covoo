@@ -15,6 +15,7 @@ class DashboardTests(unittest.TestCase):
             root = Path(directory)
             (root / 'covoo-one.json').write_text(json.dumps({'pcm_continuity_verified': True}))
             (root / 'covoo-one.live.json').write_text(json.dumps({'endpoint': '<script>alert(1)</script>', 'underruns': 0}))
+            (root / 'covoo-one.monitor.json').write_text(json.dumps({'endpoint': 'dry monitor', 'duration_seconds': 999}))
             (root / 'pairing.json').write_text('{"token":"SECRET"}')
             page = dashboard.render(root)
             self.assertIn('&lt;script&gt;', page)
@@ -23,6 +24,8 @@ class DashboardTests(unittest.TestCase):
             self.assertIn('Not reported', page)
             self.assertIn('<td>0</td>', page)
             self.assertEqual(page.count('<td>covoo-one</td>'), 1)
+            self.assertNotIn('covoo-one.monitor', page)
+            self.assertNotIn('<td>999</td>', page)
 
     def test_corrupt_reports_are_visible_without_hiding_good_sessions(self):
         with tempfile.TemporaryDirectory() as directory:

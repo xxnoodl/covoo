@@ -40,6 +40,10 @@ jobs:
         run: |
           [Console]::InputEncoding = New-Object Text.UTF8Encoding($true)
           ./scripts/test-desktop.ps1
+      - name: Latency configuration check
+        if: runner.os == 'Windows'
+        shell: powershell
+        run: ./scripts/test-latency.ps1
       - run: cargo run -p windows-receiver --locked
       - run: cargo run --release --locked -p audio-transport --example crypto_bench
       - name: Package Windows receiver

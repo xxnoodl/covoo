@@ -11,8 +11,13 @@ Choose a connection/interface and an audio output, then Start receiver. Neither
 is silently chosen on first launch. Previous choices are restored only when still
 present; otherwise select again. `File recording only` opens no output endpoint.
 For the DAW route select the existing CABLE Input endpoint; select headphones
-only when deliberately testing that route. The desktop uses the legacy backend
-and 40 ms source buffer. Experimental backend/buffer choices remain in CLI launchers.
+only when deliberately testing that route. Compatibility retains the legacy
+backend and 40 ms source target. Experimental modes expose low-period 16/8 ms
+source requests; actual device limits may raise buffering. Dry PC headphones
+is a separate optional output, Off by default, with its own mode selector.
+For recording through a cable while hearing dry voice, see
+[Ableton monitoring](ableton-monitoring.md). The Ableton latency button reads
+historical driver settings without changing them.
 
 Scan the QR inside the window and tap Connect on the phone. The adjacent panel
 shows authenticated idle/receiving/stalled states and the existing health counters.

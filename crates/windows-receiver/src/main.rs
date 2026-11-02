@@ -37,6 +37,9 @@ fn run() -> io::Result<()> {
         println!("Or: windows-receiver --self-test");
         println!("Probe: --probe-audio EXACT_NAME. Experimental: --audio-backend low-period.");
         println!(
+            "Optional dry monitor: --monitor-device EXACT_NAME [--monitor-buffer-ms 40] [--monitor-backend legacy|low-period]."
+        );
+        println!(
             "Or: --list-audio. Add --audio-device EXACT_NAME [--buffer-ms 40] to --serve for M3 Stage A routing."
         );
         println!(
@@ -147,6 +150,56 @@ fn run() -> io::Result<()> {
     {
         return Err(io::Error::other(
             "Audio buffer options require --audio-device",
+        ));
+    }
+    if let Some(device) = value(&args, "--monitor-device")? {
+        if !cfg!(windows) {
+            return Err(io::Error::other("Dry monitoring requires Windows"));
+        }
+        if value(&args, "--audio-device")? == Some(device) {
+            return Err(io::Error::other(
+                "Main output and dry monitor must be different endpoints",
+            ));
+        }
+        let backend = match value(&args, "--monitor-backend")?.unwrap_or("legacy") {
+            "legacy" => windows_receiver::live::AudioBackend::Legacy,
+            "low-period" => windows_receiver::live::AudioBackend::LowPeriod,
+            _ => {
+                return Err(io::Error::other(
+                    "--monitor-backend must be legacy or low-period",
+                ));
+            }
+        };
+        let buffer_ms: u32 = value(&args, "--monitor-buffer-ms")?
+            .unwrap_or("40")
+            .parse()
+            .map_err(io::Error::other)?;
+        let device_buffer_frames = value(&args, "--monitor-device-buffer-frames")?
+            .map(|s| s.parse::<u32>().map_err(io::Error::other))
+            .transpose()?;
+        if !(5..=100).contains(&buffer_ms)
+            || device_buffer_frames.is_some_and(|frames| !(32..=8192).contains(&frames))
+        {
+            return Err(io::Error::other(
+                "Dry monitor buffer must be 5..100 ms and optional device frames 32..8192",
+            ));
+        }
+        server = server.with_monitor(windows_receiver::live::RouteOptions {
+            device: device.into(),
+            buffer_ms,
+            device_buffer_frames,
+            backend,
+        });
+    } else if [
+        "--monitor-buffer-ms",
+        "--monitor-backend",
+        "--monitor-device-buffer-frames",
+    ]
+    .iter()
+    .any(|name| args.iter().any(|arg| arg == name))
+    {
+        return Err(io::Error::other(
+            "Dry monitor options require --monitor-device",
         ));
     }
     let page = server.pairing_page(&host.to_string())?;
