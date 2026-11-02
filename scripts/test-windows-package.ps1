@@ -74,12 +74,32 @@ $badManifest.files[0].path = '../escape.txt'
 Assert-Rejected { Install-Covoo $expanded $install $shortcuts $data } 'Traversal was accepted.'
 [IO.File]::WriteAllText($manifestPath, $originalManifest)
 
+# Existing junctions must not redirect installation writes into another folder.
+$outside = Join-Path $folder 'outside'
+$junction = Join-Path $folder 'linked-install'
+[IO.Directory]::CreateDirectory($outside) | Out-Null
+[IO.File]::WriteAllText((Join-Path $outside 'sentinel.txt'), 'unchanged')
+New-Item -ItemType Junction -Path $junction -Value $outside | Out-Null
+try {
+    Assert-Rejected { Install-Covoo $expanded $junction $shortcuts $data } 'Junction redirected installation.'
+    Assert-True (@(Get-ChildItem -LiteralPath $outside -Force).Count -eq 1) 'Junction target was modified.'
+} finally { [IO.Directory]::Delete($junction) }
+
 # A distinct valid build activates without replacing the old one.
 [IO.File]::AppendAllText($readme, "`r`nTest update.")
 $updated = $originalManifest | ConvertFrom-Json
 ($updated.files | Where-Object path -eq 'Read-me-first.md').sha256 = (Get-FileHash -LiteralPath $readme).Hash.ToLowerInvariant()
 $updated.build_id = $updated.build_id.Substring(0, 8) + '123456789abc'
 [IO.File]::WriteAllText($manifestPath, ($updated | ConvertTo-Json -Depth 5))
+$statePath = Join-Path $install 'installation.json'
+$previousState = [IO.File]::ReadAllText($statePath)
+$lockedState = [IO.File]::Open($statePath, 'Open', 'Read', 'Read')
+try {
+    Assert-Rejected { Install-Covoo $expanded $install $shortcuts $data } 'Activation failure was ignored.'
+    Assert-True ([IO.File]::ReadAllText($statePath) -eq $previousState) 'Failed activation changed installed state.'
+    Assert-True ($shell.CreateShortcut((Join-Path $shortcuts 'covoo.lnk')).TargetPath -eq (Join-Path $target 'covoo.exe')) 'Failed activation did not restore the shortcut.'
+    Assert-True (-not (Test-Path -LiteralPath (Join-Path $install ('app\' + $updated.build_id)))) 'Failed activation left a partially installed build.'
+} finally { $lockedState.Dispose() }
 $newTarget = Install-Covoo $expanded $install $shortcuts $data
 Assert-True ($newTarget -ne $target -and [IO.File]::Exists((Join-Path $target 'covoo.exe'))) 'Update replaced the previous build.'
 Assert-True ($shell.CreateShortcut((Join-Path $shortcuts 'covoo.lnk')).TargetPath -eq (Join-Path $newTarget 'covoo.exe')) 'Update did not activate.'
@@ -94,4 +114,4 @@ Assert-True (-not [IO.File]::Exists((Join-Path $shortcuts 'covoo.lnk'))) 'Shortc
 Assert-True ([IO.File]::ReadAllText($keep) -eq 'keep this') 'Uninstall removed an unknown file.'
 Assert-True ([IO.File]::ReadAllText((Join-Path $data 'pairing.dpapi')) -eq 'unchanged test secret') 'Setup changed saved pairing.'
 Assert-True ([IO.File]::ReadAllText((Join-Path $data 'take.wav')) -eq 'unchanged test audio') 'Setup changed recordings.'
-Write-Host 'Package ZIP, hashes, installed launcher, shortcuts, reinstall/update, damaged update, traversal, busy desktop and data-preserving uninstall passed.'
+Write-Host 'Package ZIP, hashes, installed launcher, shortcuts, reinstall/update, activation rollback, damaged update, traversal/junction rejection, busy desktop and data-preserving uninstall passed.'

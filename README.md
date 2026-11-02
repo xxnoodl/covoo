@@ -11,6 +11,6 @@ powershell -File scripts/verify.ps1
 
 Needs Rust and MSVC C++ Build Tools. GitHub Actions builds iOS on a Mac runner.
 
-Windows desktop controls: [setup](docs/testing/desktop-setup.md).
+Windows: [install](docs/testing/windows-desktop-install.md) | [desktop setup](docs/testing/desktop-setup.md).
 
 [Build setup](docs/testing/builds.md) | [DAW setup](docs/testing/m3-device.md) | [Status](docs/milestones/M3.md)

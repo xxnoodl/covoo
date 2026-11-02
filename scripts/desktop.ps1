@@ -69,6 +69,14 @@ $start = New-Button 'Start receiver'
 $stop = New-Button 'Stop receiver'
 $refresh = New-Button 'Refresh choices'
 $revoke = New-Button 'Revoke saved pairing'
+$recordings = New-Button 'Open recordings'
+$recordings.Add_Click({
+    try {
+        $directory = Join-Path $root 'recordings'
+        [IO.Directory]::CreateDirectory($directory) | Out-Null
+        [Diagnostics.Process]::Start('explorer.exe', (Quote-Argument $directory)) | Out-Null
+    } catch { Show-Message $_.Exception.Message }
+})
 $stop.Enabled = $false
 $pairing = New-Object Windows.Forms.WebBrowser
 $pairing.Dock = 'Fill'; $pairing.AllowWebBrowserDrop = $false

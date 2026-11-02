@@ -1,6 +1,7 @@
 # Windows desktop setup
 
-In a Windows package, open `start-desktop.cmd`. From the repository after a
+In a Windows package, open `covoo.exe`, or use `install-covoo.cmd` to add it to
+your Start menu. See [installation](windows-desktop-install.md). From the repository after a
 debug build, run `powershell -NoProfile -STA -File scripts/desktop.ps1`.
 Windows PowerShell 5.1 and Windows Forms are used; no downloaded UI runtime.
 If local script policy blocks execution, the CLI launchers remain available;
@@ -15,6 +16,10 @@ and 40 ms source buffer. Experimental backend/buffer choices remain in CLI launc
 
 Scan the QR inside the window and tap Connect on the phone. The adjacent panel
 shows authenticated idle/receiving/stalled states and the existing health counters.
+Receiver process CPU and working set are sampled by the desktop once per second.
+CPU is normalized across all logical processors; these values exclude the UI
+and are not callback deadlines or physical latency. Open recordings opens the
+desktop's recordings folder.
 Status older than five seconds is unavailable. Estimates are not physical latency.
 Errors appear in the lower log. Stop receiver and window close request graceful
 worker shutdown; wait for exit before restarting or revoking. This stops the

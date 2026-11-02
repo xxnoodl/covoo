@@ -1,13 +1,15 @@
 # Next session
 
-Windows setup implementation is complete for desktop controls, integrated
-pairing/status and saved pairing. Local Windows automation passed; iOS Keychain
-build/simulator checks and physical acceptance remain pending. No new recording
-is needed to continue independent work.
+Desktop controls, integrated pairing/status, saved pairing and per-user Windows
+packaging are implemented. The installer and native launcher passed isolated
+Windows automation. CI is checking simulator Keychain entitlements and a Windows
+UTF-8 BOM correction; physical acceptance remains pending. No recording is needed
+for independent work.
 
 ## Read first
 
-- `AGENTS.md`, `todo.md`, `docs/milestones/desktop-setup-update.md`.
+- `AGENTS.md`, `todo.md`, `docs/milestones/desktop-setup-update.md` and
+  `docs/milestones/windows-package-update.md`.
 - `docs/decisions/0009-desktop-pairing.md` and `docs/testing/desktop-setup.md`.
 - Desktop scripts, receiver `main.rs`, `server.rs`, `dashboard.rs`, `live.rs`.
 - iOS `PairingStore.swift`, `CaptureModel.swift`, `AudioStreamer.swift` and
@@ -15,10 +17,13 @@ is needed to continue independent work.
 
 ## Next work
 
-1. Run/inspect macOS CI for the new Keychain test and unsigned iOS builds when
-   available. No local Mac exists. Do not infer these passed from Rust checks.
-2. Continue independent setup/installation work and remaining metrics. The desktop
-   exposes the existing legacy 40 ms route; experimental presets remain in CLI.
+1. Inspect the latest `desktop-setup` branch CI for Keychain simulator tests and
+   packaged Windows setup. The initial run failed on unsigned-host entitlements
+   (-34018) and Framework stdin's UTF-8 BOM. Fixes were pushed; record actual
+   outcomes rather than inferring success. No local Mac exists.
+2. Continue remaining metrics and independent milestone work. The desktop exposes
+   receiver process CPU/memory and the existing legacy 40 ms route. Receiver RTT
+   and phone route/format are unavailable; experimental presets remain in CLI.
    No automatic drivers, firewall or execution-policy changes.
 3. Keep paired identity fail-closed, certificate pinning and fresh take keys.
    Stop preserves desktop identity; Revoke requires a stopped receiver and rotates
@@ -51,14 +56,17 @@ ASan/UBSan/callback tests, encrypted Swift/Rust interoperability, unsigned devic
 and simulator builds, and ten iOS simulator tests. Evidence is in the monitoring
 report. This working revision locally passed 36 workspace Rust tests, ten
 Python tests, Windows native queue/gate checks, desktop pipe/DPAPI tests and the
-actual Windows Forms loopback smoke. See the desktop setup report for limits;
-no CI run for this revision is claimed.
+actual Windows Forms loopback smoke. Packaging also passed an isolated native
+launcher, install/update/rollback/shortcuts/uninstall suite. See both setup reports
+for limits and exact CI evidence.
 
 Run `scripts/verify.ps1`, locked debug build, and relevant feature checks.
 Local Rust is under `.tools/cargo/bin/cargo.exe`; use repository `.tools/cargo`
 as CARGO_HOME and `.tools/rustup` as RUSTUP_HOME when invoking it directly.
 Native checks: `scripts/test-native-windows.ps1`; browser checks:
-`scripts/test-dashboard.ps1`. Desktop checks: `scripts/test-desktop.ps1` and
+`scripts/test-dashboard.ps1`. Package checks: `scripts/test-windows-package.ps1`.
+Build a ZIP with `scripts/package-windows.ps1`; no real user installation is
+performed by either script. Desktop checks: `scripts/test-desktop.ps1` and
 `powershell -STA -File scripts/desktop.ps1 -ReceiverPath target/release/windows-receiver.exe -SmokeTest`.
 macOS CI supplies Swift/Xcode and POSIX sanitizer
 checks. There is no local Mac. User has a regular Apple account and previously

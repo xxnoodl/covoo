@@ -43,6 +43,13 @@ acceptance gates still apply before dependent work or milestone sign-off.
 
 ## Required acceptance tests, scheduled later
 
+- [ ] Windows package on a standard user account: downloaded ZIP/extraction,
+  native launcher and visible startup errors, optional install/update, actual
+  Start menu and uninstall shortcuts, and retained pairing/preferences/recordings.
+  Check current script policy without changing it. Close desktop/console receiver
+  before update/removal. Isolated setup automation does not establish this pass.
+  See docs/milestones/windows-package-update.md.
+
 - [ ] Desktop setup and saved pairing: signed updated iOS app, explicit interface/
   output selection, real take Start/Stop and window close, missing/removed endpoint
   with no fallback, stale/error status, USB/interface/address changes, Windows/app
@@ -104,13 +111,14 @@ acceptance gates still apply before dependent work or milestone sign-off.
 ## Implementation still required
 
 - [ ] Native WaveRT endpoint, restricted feeder, build-only WDK CI and installer rollback.
-- [ ] Remaining desktop metrics and consumer installation. Desktop controls,
-  integrated pairing/status and Windows identity persistence are implemented and
-  locally automated-verified; signed phone/physical acceptance remains above.
+- [ ] Remaining desktop metrics and installation acceptance. Per-user packaging,
+  native launcher, CPU/memory observations and isolated setup checks are implemented
+  and locally automated-verified. Receiver RTT and phone format/route telemetry
+  remain unavailable; physical installation and signed phone tests remain above.
 - [ ] Local iPhone monitoring acceptance. Implementation and automated coverage
   are tracked in docs/milestones/local-monitoring-update.md; hardware checks above.
 - [ ] Deliberate background recording support; current policy stops on background/lock.
-- [ ] Saved pairing acceptance and consumer installation workflow. Windows DPAPI
+- [ ] Saved pairing and installation acceptance. Windows DPAPI
   persistence is locally automated-verified. Phone Keychain persistence is
   implemented; simulator/build and signed-device verification remain pending.
 
