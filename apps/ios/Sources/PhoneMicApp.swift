@@ -75,7 +75,23 @@ struct PhoneMicApp: App {
                         LabeledContent("RMS", value: capture.state.frames > 0 ? String(format: "%.1f dBFS", capture.state.rmsDB) : "No samples")
                         LabeledContent("Peak", value: capture.state.frames > 0 ? String(format: "%.1f dBFS", capture.state.peakDB) : "No samples")
                         Text("Device format: \(capture.state.deviceFormat)").font(.caption)
-                        LabeledContent("Monitoring", value: "Off")
+                        LabeledContent("Phone monitoring", value: capture.state.monitorStatus)
+                    }
+                    Section("Listen on phone") {
+                        Toggle("Listen on phone", isOn: $capture.localMonitor)
+                            .disabled(capture.state.recording || capture.requesting)
+                        Text("Experimental dry monitoring through wired phone headphones. Choose before recording. Start with low phone volume.").font(.caption)
+                        if capture.localMonitor {
+                            Toggle("Mute", isOn: $capture.monitorMuted)
+                                .onChange(of: capture.monitorMuted) { _, _ in capture.updateMonitorLevel() }
+                            Slider(value: $capture.monitorGain, in: 0...1)
+                                .accessibilityLabel("Phone monitoring volume")
+                                .onChange(of: capture.monitorGain) { _, _ in capture.updateMonitorLevel() }
+                            LabeledContent("Volume", value: String(format: "%.0f%%", capture.monitorGain * 100))
+                            Text("Volume and mute affect only these headphones. Your saved and streamed audio stays unchanged. Route changes pause listening; restart the take after checking the headphones.").font(.caption)
+                            Text("Bluetooth can add significant delay and is not enabled here. Using wired headphones and Lightning USB together requires compatible hardware; it is not verified.").font(.caption)
+                            LabeledContent("Phone output", value: capture.state.monitorOutput)
+                        }
                     }
                     Section("Capture diagnostics") {
                         LabeledContent("Written frames", value: "\(capture.state.frames)")
@@ -88,7 +104,7 @@ struct PhoneMicApp: App {
                         LabeledContent("Max callback work", value: capture.state.callbacks > 0 ? String(format: "%.3f ms", capture.state.maxCallbackMS) : "Not measured")
                         Text("Callback work is software timing, not input latency.")
                         Text("Keep the app open. Locking or backgrounding stops recording.")
-                        Text("The PC saves a WAV. Windows microphone routing comes in M3.")
+                        Text("The PC saves a WAV. The DAW can monitor through the selected Windows audio route.")
                     }
                 }
                 .navigationTitle(productName)

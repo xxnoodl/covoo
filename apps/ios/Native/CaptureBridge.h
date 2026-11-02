@@ -1,6 +1,7 @@
 #ifndef PM_CAPTURE_BRIDGE_H
 #define PM_CAPTURE_BRIDGE_H
 #include "PCMQueue.h"
+#include "MonitorGate.h"
 #include <AudioToolbox/AudioToolbox.h>
 
 typedef struct PMCapture PMCapture;
@@ -11,6 +12,7 @@ typedef struct {
     uint64_t oversized_callbacks;
     uint64_t max_callback_ticks;
     int32_t last_status;
+    uint64_t monitor_frames, monitor_silent_frames;
     PMQueueStats queue;
 } PMCaptureStats;
 
@@ -18,6 +20,8 @@ PMCapture *pm_capture_create(AudioUnit unit);
 /* Borrowed network queue. Configure only before starting the AudioUnit.
    Its owner must outlive all callbacks, including failed-disposal recovery. */
 void pm_capture_set_network_queue(PMCapture *capture, PMQueue *queue);
+/* Configure only before AudioUnitStart. Retains gate until capture destruction. */
+void pm_capture_set_monitor(PMCapture *capture, PMMonitorGate *gate);
 /* Call only after AudioOutputUnitStop and AudioComponentInstanceDispose. */
 void pm_capture_destroy(PMCapture *capture);
 AURenderCallbackStruct pm_capture_callback(PMCapture *capture);

@@ -43,6 +43,11 @@ acceptance gates still apply before dependent work or milestone sign-off.
 
 ## Required acceptance tests, scheduled later
 
+- [ ] Local phone monitoring: signed build, default-off capture regression,
+  wired-headphone gain/mute and source continuity, repeated takes, rejected routes,
+  headphone removal/feedback, interruption/background gate behavior and physical
+  latency. See docs/testing/local-monitoring.md. CI is not hardware acceptance.
+
 - [ ] Receiver dashboard: validate browser refresh during a take, idle/final state,
   restart and stale warning after forced exit. Compare output counters with saved
   reports during later output tests. See docs/testing/receiver-dashboard.md.
@@ -92,7 +97,8 @@ acceptance gates still apply before dependent work or milestone sign-off.
 - [ ] Native WaveRT endpoint, restricted feeder, build-only WDK CI and installer rollback.
 - [ ] Native desktop controls and remaining metrics. The local receiver dashboard
   is implemented; browser/physical checks remain pending above.
-- [ ] Optional local iPhone monitoring with independent gain/mute and safe route changes.
+- [ ] Local iPhone monitoring acceptance. Implementation and automated coverage
+  are tracked in docs/milestones/local-monitoring-update.md; hardware checks above.
 - [ ] Deliberate background recording support; current policy stops on background/lock.
 - [ ] Persisted pairing and consumer installation workflow.
 

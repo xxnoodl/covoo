@@ -31,9 +31,10 @@ PY
 )
 clang -std=c11 -Wall -Wextra -Werror -I apps/ios/Native -c apps/ios/Native/PCMQueue.c -o "$test_dir/queue.o"
 clang -std=c11 -Wall -Wextra -Werror -I apps/ios/Native -c apps/ios/Native/CaptureBridge.c -o "$test_dir/capture.o"
+clang -std=c11 -Wall -Wextra -Werror -I apps/ios/Native -c apps/ios/Native/MonitorGate.c -o "$test_dir/monitor.o"
 swiftc -swift-version 5 -import-objc-header apps/ios/Native/PhoneMic-Bridging-Header.h \
   apps/ios/Sources/WireProtocol.swift apps/ios/Sources/PacketProtection.swift apps/ios/Sources/TakeDelivery.swift apps/ios/Sources/AudioStreamer.swift \
-  tests/interoperability/SwiftNetworkCheck.swift "$test_dir/queue.o" "$test_dir/capture.o" \
+  tests/interoperability/SwiftNetworkCheck.swift "$test_dir/queue.o" "$test_dir/capture.o" "$test_dir/monitor.o" \
   -framework AudioToolbox -framework Network -framework Security -o "$test_dir/client"
 "$test_dir/client" "$pairing"
 "$test_dir/client" "$pairing" --fast

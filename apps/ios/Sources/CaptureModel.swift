@@ -11,6 +11,9 @@ final class CaptureModel: ObservableObject {
     @Published var packetProtection = true
     @Published var keepRecordingOnPhone = false
     @Published var lowLatency = false
+    @Published var localMonitor = false
+    @Published var monitorGain: Float = 0.2
+    @Published var monitorMuted = false
     private var streamer: AudioStreamer?
     private let service = CaptureService()
     private var observers: [NSObjectProtocol] = []
@@ -105,7 +108,8 @@ final class CaptureModel: ObservableObject {
             }
             state.status = "Starting"
             service.start(streamer: streamToPC ? streamer : nil,
-                keepLocal: !streamToPC || keepRecordingOnPhone, lowLatency: lowLatency) { [weak self] value in
+                keepLocal: !streamToPC || keepRecordingOnPhone, lowLatency: lowLatency,
+                localMonitor: localMonitor, monitorGain: monitorGain, monitorMuted: monitorMuted) { [weak self] value in
                 Task { @MainActor in
                     self?.state = value
                     self?.requesting = value.finalizing
@@ -119,6 +123,10 @@ final class CaptureModel: ObservableObject {
     }
 
     func stop() { service.stop() }
+
+    func updateMonitorLevel() {
+        service.setLocalMonitorLevel(gain: monitorGain, muted: monitorMuted)
+    }
 
     func acceptPairingURL(_ url: URL) {
         guard !state.recording, !requesting else { return }

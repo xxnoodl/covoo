@@ -22,15 +22,19 @@ $options = @('/nologo', '/std:c11', '/experimental:c11atomics', '/W4', '/WX',
     '/I', (Join-Path $tools.FullName 'include'),
     '/I', (Join-Path $sdk.FullName 'ucrt'),
     '/I', (Join-Path $sdk.FullName 'shared'),
-    '/I', (Join-Path $repo 'apps\ios\Native'),
-    (Join-Path $repo 'apps\ios\Native\PCMQueue.c'),
-    (Join-Path $repo 'tests\native\pcm_queue_test.c'),
-    "/Fo$build\", "/Fe$build\pcm-queue-test.exe", '/link',
+    '/I', (Join-Path $repo 'apps\ios\Native'), "/Fo$build\")
+$libraries = @('/link',
     "/LIBPATH:$($tools.FullName)\lib\x64",
     "/LIBPATH:$kits\Lib\$($sdk.Name)\ucrt\x64",
     "/LIBPATH:$kits\Lib\$($sdk.Name)\um\x64")
-& $compiler @options
-if ($LASTEXITCODE -ne 0) { throw 'Native queue compilation failed.' }
-& (Join-Path $build 'pcm-queue-test.exe')
-if ($LASTEXITCODE -ne 0) { throw 'Native queue tests failed.' }
+foreach ($test in @(@('PCMQueue.c', 'pcm_queue_test.c', 'pcm-queue-test.exe'),
+                   @('MonitorGate.c', 'monitor_gate_test.c', 'monitor-gate-test.exe'))) {
+    $sources = @((Join-Path $repo "apps\ios\Native\$($test[0])"),
+                 (Join-Path $repo "tests\native\$($test[1])"))
+    $executable = Join-Path $build $test[2]
+    & $compiler @options @sources "/Fe$executable" @libraries
+    if ($LASTEXITCODE -ne 0) { throw "Native compilation failed: $($test[0])" }
+    & $executable
+    if ($LASTEXITCODE -ne 0) { throw "Native test failed: $($test[1])" }
+}
 Write-Host 'Windows queue subset passed. POSIX concurrency and sanitizers run on Linux/macOS.'

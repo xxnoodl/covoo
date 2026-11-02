@@ -2,16 +2,20 @@
 #include <mach/mach_time.h>
 #include <stdatomic.h>
 #include <stdlib.h>
+#include <string.h>
 
 struct PMCapture {
     AudioUnit unit;
     PMQueue *queue;
     PMQueue *network_queue;
+    PMMonitorGate *monitor;
+    float monitor_gain;
     float scratch[PM_MAX_FRAMES];
     uint64_t position;
     uint64_t sequence;
     _Atomic uint64_t callbacks, rendered_frames, render_errors, oversized_callbacks, max_callback_ticks;
     _Atomic int32_t last_status;
+    _Atomic uint64_t monitor_frames, monitor_silent_frames;
 };
 
 static void increment(_Atomic uint64_t *value, uint64_t amount) {
@@ -20,7 +24,7 @@ static void increment(_Atomic uint64_t *value, uint64_t amount) {
 
 static OSStatus input_callback(void *context, AudioUnitRenderActionFlags *flags,
     const AudioTimeStamp *time, UInt32 bus, UInt32 frames, AudioBufferList *unused) {
-    (void)bus; (void)unused;
+    (void)bus;
     PMCapture *c = context;
     const uint64_t began = mach_absolute_time();
     increment(&c->callbacks, 1);
@@ -28,6 +32,17 @@ static OSStatus input_callback(void *context, AudioUnitRenderActionFlags *flags,
     c->position += frames;
     uint64_t sequence = c->sequence++;
     if (frames == 0) return noErr;
+    if (c->monitor) {
+        *flags |= kAudioUnitRenderAction_OutputIsSilence;
+        if (!unused || unused->mNumberBuffers != 1 || unused->mBuffers[0].mNumberChannels != 1
+            || !unused->mBuffers[0].mData || frames > PM_MAX_FRAMES
+            || unused->mBuffers[0].mDataByteSize < frames * sizeof(float)) {
+            increment(&c->render_errors, 1);
+            atomic_store_explicit(&c->last_status, kAudio_ParamError, memory_order_relaxed);
+            return kAudio_ParamError;
+        }
+        memset(unused->mBuffers[0].mData, 0, frames * sizeof(float));
+    }
     if (frames > PM_MAX_FRAMES) {
         increment(&c->oversized_callbacks, 1);
         atomic_store_explicit(&c->last_status, kAudioUnitErr_TooManyFramesToProcess, memory_order_relaxed);
@@ -35,7 +50,8 @@ static OSStatus input_callback(void *context, AudioUnitRenderActionFlags *flags,
     }
     AudioBufferList buffers = { .mNumberBuffers = 1,
         .mBuffers = {{ .mNumberChannels = 1, .mDataByteSize = frames * sizeof(float), .mData = c->scratch }} };
-    OSStatus status = AudioUnitRender(c->unit, flags, time, 1, frames, &buffers);
+    AudioUnitRenderActionFlags input_flags = *flags & ~kAudioUnitRenderAction_OutputIsSilence;
+    OSStatus status = AudioUnitRender(c->unit, &input_flags, time, 1, frames, &buffers);
     if (status != noErr || buffers.mBuffers[0].mDataByteSize != frames * sizeof(float)) {
         if (status == noErr) status = kAudio_ParamError;
         increment(&c->render_errors, 1);
@@ -46,6 +62,12 @@ static OSStatus input_callback(void *context, AudioUnitRenderActionFlags *flags,
     PMBlockInfo info = { sequence, position, time->mHostTime, time->mSampleTime,
         time->mFlags, frames, mach_absolute_time() - began };
     pm_queue_fanout(c->queue, c->network_queue, c->scratch, info);
+    if (c->monitor) {
+        bool open = pm_monitor_render(c->monitor, c->scratch, unused->mBuffers[0].mData, frames, &c->monitor_gain);
+        increment(&c->monitor_frames, frames);
+        if (open) *flags &= ~kAudioUnitRenderAction_OutputIsSilence;
+        else increment(&c->monitor_silent_frames, frames);
+    }
     uint64_t elapsed = mach_absolute_time() - began;
     if (elapsed > atomic_load_explicit(&c->max_callback_ticks, memory_order_relaxed))
         atomic_store_explicit(&c->max_callback_ticks, elapsed, memory_order_relaxed);
@@ -62,17 +84,26 @@ PMCapture *pm_capture_create(AudioUnit unit) {
     atomic_init(&c->oversized_callbacks, 0);
     atomic_init(&c->max_callback_ticks, 0);
     atomic_init(&c->last_status, 0);
+    atomic_init(&c->monitor_frames, 0);
+    atomic_init(&c->monitor_silent_frames, 0);
     c->queue = pm_queue_create();
     if (!c->queue || !atomic_is_lock_free(&c->callbacks) || !atomic_is_lock_free(&c->rendered_frames)
         || !atomic_is_lock_free(&c->render_errors) || !atomic_is_lock_free(&c->oversized_callbacks)
-        || !atomic_is_lock_free(&c->max_callback_ticks) || !atomic_is_lock_free(&c->last_status)) {
+        || !atomic_is_lock_free(&c->max_callback_ticks) || !atomic_is_lock_free(&c->last_status)
+        || !atomic_is_lock_free(&c->monitor_frames) || !atomic_is_lock_free(&c->monitor_silent_frames)) {
         pm_queue_destroy(c->queue); free(c); return NULL;
     }
     return c;
 }
 
 void pm_capture_destroy(PMCapture *c) {
-    if (c) { pm_queue_destroy(c->queue); free(c); }
+    if (c) { pm_monitor_release(c->monitor); pm_queue_destroy(c->queue); free(c); }
+}
+void pm_capture_set_monitor(PMCapture *c, PMMonitorGate *gate) {
+    if (!c) return;
+    pm_monitor_retain(gate);
+    pm_monitor_release(c->monitor);
+    c->monitor = gate;
 }
 void pm_capture_set_network_queue(PMCapture *c, PMQueue *queue) {
     if (c) c->network_queue = queue;
@@ -91,7 +122,9 @@ PMCaptureStats pm_capture_stats(const PMCapture *c) {
         atomic_load_explicit(&c->render_errors, memory_order_relaxed),
         atomic_load_explicit(&c->oversized_callbacks, memory_order_relaxed),
         atomic_load_explicit(&c->max_callback_ticks, memory_order_relaxed),
-        atomic_load_explicit(&c->last_status, memory_order_relaxed), pm_queue_stats(c->queue) };
+        atomic_load_explicit(&c->last_status, memory_order_relaxed),
+        atomic_load_explicit(&c->monitor_frames, memory_order_relaxed),
+        atomic_load_explicit(&c->monitor_silent_frames, memory_order_relaxed), pm_queue_stats(c->queue) };
     return s;
 }
 double pm_ticks_to_seconds(uint64_t ticks) {

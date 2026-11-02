@@ -1,6 +1,7 @@
 import AVFoundation
 import AudioToolbox
 import Foundation
+import UIKit
 
 struct CaptureState {
     var recording = false
@@ -22,6 +23,11 @@ struct CaptureState {
     var rmsDB = -120.0
     var peakDB = -120.0
     var files: [URL] = []
+    var monitorRequested = false
+    var monitorStatus = "Off"
+    var monitorOutput = "Off"
+    var monitorFrames: UInt64 = 0
+    var monitorSilentFrames: UInt64 = 0
 }
 
 private struct CaptureFailure: LocalizedError {
@@ -56,6 +62,31 @@ final class CaptureService {
     private var storage: RecordingStorage?
     private var keepLocal = true
     private var lowLatency = false
+    private let monitorGate = pm_monitor_create()
+    private var monitorObservers: [NSObjectProtocol] = []
+
+    init() {
+        // Delivery on the posting thread closes the atomic gate before writer/UI
+        // queues can run. This never queries the session or touches callback memory.
+        for name in [AVAudioSession.routeChangeNotification, AVAudioSession.interruptionNotification,
+            AVAudioSession.mediaServicesWereLostNotification, AVAudioSession.mediaServicesWereResetNotification,
+            UIApplication.willResignActiveNotification] {
+            monitorObservers.append(NotificationCenter.default.addObserver(forName: name,
+                object: nil, queue: nil) { [weak self] _ in self?.inhibitLocalMonitor() })
+        }
+    }
+
+    deinit {
+        for observer in monitorObservers { NotificationCenter.default.removeObserver(observer) }
+        // A retained callback context owns a separate C reference, even if disposal failed.
+        pm_monitor_release(monitorGate)
+    }
+
+    func inhibitLocalMonitor() { pm_monitor_inhibit(monitorGate) }
+
+    func setLocalMonitorLevel(gain: Float, muted: Bool) {
+        _ = pm_monitor_level(monitorGate, gain, muted)
+    }
 
     func routeChanged() {
         worker.async { [self] in
@@ -72,7 +103,9 @@ final class CaptureService {
             + "/\(session.sampleRate)/\(session.ioBufferDuration)/\(session.inputNumberOfChannels)"
     }
 
-    func start(streamer: AudioStreamer? = nil, keepLocal: Bool = true, lowLatency: Bool = false, update: @escaping (CaptureState) -> Void) {
+    func start(streamer: AudioStreamer? = nil, keepLocal: Bool = true, lowLatency: Bool = false,
+        localMonitor: Bool = false, monitorGain: Float = 0.2, monitorMuted: Bool = false,
+        update: @escaping (CaptureState) -> Void) {
         worker.async { [self] in
             publish = update
             guard unit == nil, !state.finalizing else {
@@ -81,6 +114,9 @@ final class CaptureService {
                 return
             }
             state = CaptureState()
+            inhibitLocalMonitor()
+            state.monitorRequested = localMonitor
+            setLocalMonitorLevel(gain: monitorGain, muted: monitorMuted)
             self.streamer = streamer
             self.keepLocal = keepLocal
             self.lowLatency = lowLatency
@@ -113,7 +149,7 @@ final class CaptureService {
 
     private func configureAndStart() throws {
         let session = AVAudioSession.sharedInstance()
-        try session.setCategory(.record, mode: .measurement, options: [])
+        try session.setCategory(state.monitorRequested ? .playAndRecord : .record, mode: .measurement, options: [])
         try session.setPreferredSampleRate(48_000)
         try session.setPreferredIOBufferDuration(lowLatency ? 128.0 / 48000.0 : 0.005)
         try session.setActive(true)
@@ -147,8 +183,9 @@ final class CaptureService {
         var disabled: UInt32 = 0
         try check(AudioUnitSetProperty(instance, kAudioOutputUnitProperty_EnableIO,
             kAudioUnitScope_Input, 1, &enabled, UInt32(MemoryLayout<UInt32>.size)), "Enable input")
+        var outputEnabled: UInt32 = state.monitorRequested ? 1 : 0
         try check(AudioUnitSetProperty(instance, kAudioOutputUnitProperty_EnableIO,
-            kAudioUnitScope_Output, 0, &disabled, UInt32(MemoryLayout<UInt32>.size)), "Disable output")
+            kAudioUnitScope_Output, 0, &outputEnabled, UInt32(MemoryLayout<UInt32>.size)), "Configure output")
         var format = AudioStreamBasicDescription(mSampleRate: state.sampleRate,
             mFormatID: kAudioFormatLinearPCM,
             mFormatFlags: kAudioFormatFlagIsFloat | kAudioFormatFlagIsPacked,
@@ -156,6 +193,10 @@ final class CaptureService {
             mChannelsPerFrame: 1, mBitsPerChannel: 32, mReserved: 0)
         try check(AudioUnitSetProperty(instance, kAudioUnitProperty_StreamFormat,
             kAudioUnitScope_Output, 1, &format, UInt32(MemoryLayout<AudioStreamBasicDescription>.size)), "Set client format")
+        if state.monitorRequested {
+            try check(AudioUnitSetProperty(instance, kAudioUnitProperty_StreamFormat,
+                kAudioUnitScope_Input, 0, &format, UInt32(MemoryLayout<AudioStreamBasicDescription>.size)), "Set monitor format")
+        }
         var maximum: UInt32 = 0
         var size = UInt32(MemoryLayout<UInt32>.size)
         try check(AudioUnitGetProperty(instance, kAudioUnitProperty_MaximumFramesPerSlice,
@@ -167,12 +208,23 @@ final class CaptureService {
             throw CaptureFailure(message: "Cannot allocate lock-free capture buffers")
         }
         capture = context
+        if state.monitorRequested {
+            guard let monitorGate else { throw CaptureFailure(message: "Cannot allocate lock-free monitoring controls") }
+            pm_capture_set_monitor(context, monitorGate)
+        }
         if let streamer {
             pm_capture_set_network_queue(context, streamer.captureProducerQueue)
         }
         var callback = pm_capture_callback(context)
-        try check(AudioUnitSetProperty(instance, kAudioOutputUnitProperty_SetInputCallback,
-            kAudioUnitScope_Global, 1, &callback, UInt32(MemoryLayout<AURenderCallbackStruct>.size)), "Set input callback")
+        if state.monitorRequested {
+            // A single output-driven callback pulls input once and fans out the
+            // unmodified PCM before applying monitor-only gain to output bus 0.
+            try check(AudioUnitSetProperty(instance, kAudioUnitProperty_SetRenderCallback,
+                kAudioUnitScope_Input, 0, &callback, UInt32(MemoryLayout<AURenderCallbackStruct>.size)), "Set duplex callback")
+        } else {
+            try check(AudioUnitSetProperty(instance, kAudioOutputUnitProperty_SetInputCallback,
+                kAudioUnitScope_Global, 1, &callback, UInt32(MemoryLayout<AURenderCallbackStruct>.size)), "Set input callback")
+        }
         try check(AudioUnitSetProperty(instance, kAudioUnitProperty_ShouldAllocateBuffer,
             kAudioUnitScope_Output, 1, &disabled, UInt32(MemoryLayout<UInt32>.size)), "Use preallocated render buffer")
         try check(AudioUnitInitialize(instance), "Initialize RemoteIO")
@@ -186,6 +238,19 @@ final class CaptureService {
             actualClient.mFormatFlags & kAudioFormatFlagIsFloat != 0,
             actualClient.mFormatFlags & kAudioFormatFlagIsBigEndian == 0 else {
             throw CaptureFailure(message: "RemoteIO did not grant the requested client format")
+        }
+        if state.monitorRequested {
+            var actualOutput = AudioStreamBasicDescription()
+            size = UInt32(MemoryLayout<AudioStreamBasicDescription>.size)
+            try check(AudioUnitGetProperty(instance, kAudioUnitProperty_StreamFormat,
+                kAudioUnitScope_Input, 0, &actualOutput, &size), "Read monitor format")
+            guard actualOutput.mSampleRate == state.sampleRate, actualOutput.mChannelsPerFrame == 1,
+                actualOutput.mFormatID == kAudioFormatLinearPCM, actualOutput.mBytesPerFrame == 4,
+                actualOutput.mBitsPerChannel == 32,
+                actualOutput.mFormatFlags & kAudioFormatFlagIsFloat != 0,
+                actualOutput.mFormatFlags & kAudioFormatFlagIsBigEndian == 0 else {
+                throw CaptureFailure(message: "RemoteIO did not grant the monitor format")
+            }
         }
         var device = AudioStreamBasicDescription()
         size = UInt32(MemoryLayout<AudioStreamBasicDescription>.size)
@@ -240,6 +305,21 @@ final class CaptureService {
 
     private func startInput() throws {
         guard let unit else { throw CaptureFailure(message: "Capture was cancelled") }
+        // Capture the lease before checking the actual route. A notification
+        // between this check and arming invalidates the lease atomically.
+        if state.monitorRequested {
+            guard let monitorGate else { throw CaptureFailure(message: "Monitoring controls unavailable") }
+            let generation = pm_monitor_generation(monitorGate)
+            let outputs = AVAudioSession.sharedInstance().currentRoute.outputs
+            guard LocalMonitorPolicy.allows(outputs.map { $0.portType }) else {
+                throw CaptureFailure(message: "Phone monitoring needs wired headphones. Speakers, USB audio and Bluetooth are not enabled.")
+            }
+            let settings = pm_monitor_settings(monitorGate)
+            guard pm_monitor_arm(monitorGate, generation, settings.gain, settings.muted) else {
+                throw CaptureFailure(message: "Monitoring route changed during startup. Start again.")
+            }
+            state.monitorOutput = outputs.map { $0.portName }.joined(separator: ", ")
+        }
         guard currentRouteSignature() == routeSignature else { throw CaptureFailure(message: "Audio route changed during startup. Start again.") }
         startedAt = Date()
         lastProgress = ProcessInfo.processInfo.systemUptime
@@ -320,9 +400,17 @@ final class CaptureService {
         state.highWater = stats.queue.high_water
         state.renderErrors = stats.render_errors + stats.oversized_callbacks
         state.maxCallbackMS = pm_ticks_to_seconds(stats.max_callback_ticks) * 1000
+        state.monitorFrames = stats.monitor_frames
+        state.monitorSilentFrames = stats.monitor_silent_frames
+        if state.monitorRequested, let monitorGate {
+            let settings = pm_monitor_settings(monitorGate)
+            state.monitorStatus = !settings.armed ? "Paused; restart the take to listen" :
+                settings.muted || settings.gain == 0 ? "Muted" : "Dry microphone to phone headphones"
+        }
     }
 
     private func finish(reason: String, drainRemaining: Bool = true) {
+        inhibitLocalMonitor()
         timer?.cancel()
         timer = nil
         events.append(reason)
@@ -349,6 +437,7 @@ final class CaptureService {
         timeline = nil
         if disposed, let capture { pm_capture_destroy(capture); self.capture = nil }
         state.recording = false
+        state.monitorStatus = "Off"
         state.status = reason
         if !disposed { state.status = "Audio cleanup failed. Restart the app." }
         do { try AVAudioSession.sharedInstance().setActive(false, options: .notifyOthersOnDeactivation) }
@@ -367,11 +456,22 @@ final class CaptureService {
         }
         if !validWAV, state.frames > 0 { state.status = "Recording file validation failed. See report." }
         let renderedFrames = finalStats?.rendered_frames ?? 0
+        let finalMonitorSettings = monitorGate.map { pm_monitor_settings($0) }
         if let reportURL {
             let report: [String: Any] = ["report_schema_version": 2, "sample_rate_hz": state.sampleRate,
                 "actual_io_buffer_ms": state.bufferMS, "actual_input_channels": state.hardwareChannels,
                 "input": state.input, "device_side_format": state.deviceFormat,
                 "client_format": "mono Float32", "wire_transport": streamer == nil ? "off" : "TLS control + encrypted UDP",
+                "local_monitor_requested": state.monitorRequested,
+                "local_monitor_output": state.monitorOutput,
+                "local_monitor_processed_frames": state.monitorFrames,
+                "local_monitor_silent_frames": state.monitorSilentFrames,
+                "local_monitor_last_gain": finalMonitorSettings?.gain ?? 0,
+                "local_monitor_last_muted": finalMonitorSettings?.muted ?? false,
+                "local_monitor_note": "Monitor gain/mute affect phone output only. Hardware latency and unplug behavior require physical validation.",
+                "callback_timestamp_source": state.monitorRequested
+                    ? "RemoteIO output-render callback; not calibrated ADC time"
+                    : "RemoteIO input callback; not calibrated ADC time",
                 "network_summary_pending":streamer != nil,
                 "latency_profile":lowLatency ? "experimental_fast" : "stable",
                 "capture_worker_interval_ms":lowLatency ? 1 : 10,
