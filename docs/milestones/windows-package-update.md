@@ -66,8 +66,14 @@ and [application identity from code signing](https://developer.apple.com/documen
 
 ## Physical acceptance
 
-Pending. No default per-user installation, real Start menu/uninstall workflow,
-signed phone deployment, microphone capture, endpoint routing or latency test was
-performed. Downloaded ZIP/script policy, a standard user account, real update and
-uninstall shortcuts, restart persistence, route changes and all M3-M6 physical
-gates remain in todo.md. Installer checks do not accept the audio milestones.
+Partial user observation after testing the supplied 312b687 package/iPhone build:
+install and uninstall work; desktop controls appear to work, including Stop
+receiver and the normal window close button. Receiver Stop/Start permits pairing
+again without rescanning. These are user-confirmed results; no new reports,
+device/OS details, account privilege or active-take PCM evidence were supplied.
+
+The user also found that tapping the shared iOS Remember/Forget row disconnects
+the session. That defect blocks Remember/Forget acceptance until the UI repair
+is retested. See [the pairing button repair](pairing-buttons-update.md).
+Standard-user policy, update/data retention, Start menu details, phone relaunch,
+Windows reboot, route changes and broader M3-M6 physical gates remain in todo.md.

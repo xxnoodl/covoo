@@ -43,15 +43,27 @@ acceptance gates still apply before dependent work or milestone sign-off.
 
 ## Required acceptance tests, scheduled later
 
+- [x] Windows install and uninstall: user reports both work on their setup while
+  testing the supplied 312b687 package. Account privilege, retained data and the
+  update path were not separately reported.
+- [x] Desktop Stop receiver and normal window close: user reports both work well.
+  Active-take completion/PCM integrity was not supplied with this observation.
+- [x] Receiver Stop/Start re-pairing without rescanning: user reports it works.
+  Phone app relaunch and Windows reboot persistence remain separate checks.
+- [ ] iOS pairing buttons: retest Remember and Forget separately after the row
+  fix. User reports the shared row disconnects their session when tapping Remember.
+  The fix separates rows and button hit handling; physical acceptance is pending.
+
 - [ ] Windows package on a standard user account: downloaded ZIP/extraction,
-  native launcher and visible startup errors, optional install/update, actual
-  Start menu and uninstall shortcuts, and retained pairing/preferences/recordings.
+  native launcher and visible startup errors, update, actual Start menu shortcuts,
+  and retained pairing/preferences/recordings. Basic install/uninstall passed the
+  user's observation above; detailed cases remain pending.
   Check current script policy without changing it. Close desktop/console receiver
   before update/removal. Isolated setup automation does not establish this pass.
   See docs/milestones/windows-package-update.md.
 
 - [ ] Desktop setup and saved pairing: signed updated iOS app, explicit interface/
-  output selection, real take Start/Stop and window close, missing/removed endpoint
+  output selection, active-take finalization on Stop/close, missing/removed endpoint
   with no fallback, stale/error status, USB/interface/address changes, Windows/app
   restart with remembered pairing, phone Forget and Windows Revoke rejecting old
   links. Check Keychain locked-device behavior and corrupt DPAPI failure. See
@@ -120,9 +132,10 @@ acceptance gates still apply before dependent work or milestone sign-off.
 - [ ] Local iPhone monitoring acceptance. Implementation and automated coverage
   are tracked in docs/milestones/local-monitoring-update.md; hardware checks above.
 - [ ] Deliberate background recording support; current policy stops on background/lock.
-- [ ] Saved pairing and installation acceptance. Windows DPAPI
-  persistence is locally automated-verified. Phone Keychain persistence is
-  simulator/build verification passed in CI; signed-device acceptance is pending.
+- [ ] Remaining saved pairing and installation acceptance. Windows DPAPI
+  persistence is locally automated-verified; receiver Stop/Start without rescanning
+  and basic install/uninstall are user-confirmed. Phone Keychain simulator/build
+  verification passed in CI; Remember/Forget repair and relaunch tests are pending.
 
 See [M4](docs/milestones/M4.md), [M5](docs/milestones/M5.md) and
 [M6](docs/milestones/M6.md) for implemented work and remaining acceptance limits.

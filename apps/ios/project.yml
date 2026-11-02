@@ -33,7 +33,7 @@ targets:
         UIRequiresFullScreen: true
         UISupportedInterfaceOrientations: [UIInterfaceOrientationPortrait]
     scheme:
-      testTargets: [PhoneMicTests]
+      testTargets: [PhoneMicTests, PhoneMicUITests]
   PhoneMicTests:
     type: bundle.unit-test
     platform: iOS
@@ -47,3 +47,16 @@ targets:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: org.example.phonemic.tests
         GENERATE_INFOPLIST_FILE: YES
+  PhoneMicUITests:
+    type: bundle.ui-testing
+    platform: iOS
+    sources: [UITests]
+    dependencies:
+      - target: PhoneMic
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: org.example.phonemic.uitests
+        GENERATE_INFOPLIST_FILE: YES
+        TEST_TARGET_NAME: PhoneMic
+        TEST_HOST: ""
+        BUNDLE_LOADER: ""

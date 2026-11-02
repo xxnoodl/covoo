@@ -17,15 +17,19 @@ struct PhoneMicApp: App {
                         Text(discovery.status).font(.caption)
                         ForEach(discovery.names, id: \.self) { Text($0) }
                         SecureField("Pairing link from receiver", text: $capture.pairingLink)
+                            .accessibilityIdentifier("pairing.link")
                             .textInputAutocapitalization(.never)
                             .autocorrectionDisabled()
                             .disabled(capture.state.recording || capture.requesting)
                         Text("Scan the receiver QR with Camera, or paste its pairing link here.").font(.caption)
-                        HStack {
-                            Button("Remember receiver") { capture.rememberReceiver() }
-                            Button("Forget receiver") { capture.forgetReceiver() }
-                        }
-                        .disabled(capture.state.recording || capture.requesting)
+                        Button("Remember receiver") { capture.rememberReceiver() }
+                            .buttonStyle(.borderless)
+                            .accessibilityIdentifier("pairing.remember")
+                            .disabled(capture.state.recording || capture.requesting)
+                        Button("Forget receiver", role: .destructive) { capture.forgetReceiver() }
+                            .buttonStyle(.borderless)
+                            .accessibilityIdentifier("pairing.forget")
+                            .disabled(capture.state.recording || capture.requesting)
                         Toggle("Packet protection", isOn: $capture.packetProtection)
                             .disabled(capture.streamState.connected || capture.state.recording || capture.requesting)
                         Text("Sends a backup copy to reduce brief audio gaps. Uses about twice the network traffic. Choose before connecting.").font(.caption)
@@ -40,6 +44,7 @@ struct PhoneMicApp: App {
                                 .disabled(capture.state.recording || capture.requesting)
                         }
                         Text(capture.streamState.status)
+                            .accessibilityIdentifier("receiver.status")
                         LabeledContent("Receiver", value: capture.streamState.receiver)
                         LabeledContent("Transport", value: capture.streamState.transport)
                         LabeledContent("Control path", value: capture.streamState.controlPath)
