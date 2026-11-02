@@ -21,7 +21,13 @@ function Run-DesktopSession([string]$Record, [string]$Name) {
     try {
         $process.StandardInput.WriteLine($Record); $process.StandardInput.Flush()
         $bootstrap = Read-Line $process.StandardOutput
-        Assert-True ($bootstrap.StartsWith('COVOO_PAIRING ')) 'Private pairing bootstrap missing.'
+        if (-not $bootstrap -or -not $bootstrap.StartsWith('COVOO_PAIRING ')) {
+            $process.StandardInput.Close()
+            if ($process.WaitForExit(10000)) {
+                throw ('Private pairing bootstrap missing. Exit ' + $process.ExitCode + ': ' + $process.StandardError.ReadToEnd())
+            }
+            throw 'Private pairing bootstrap missing; receiver did not exit.'
+        }
         $privateRecord = $bootstrap.Substring(14)
         Protect-Pairing $privateRecord $secret
         Assert-True ((Read-Pairing $secret) -eq $privateRecord) 'DPAPI round trip failed.'
