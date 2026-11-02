@@ -69,8 +69,14 @@ function New-ReceiverProcess([string]$Executable, [string[]]$Arguments) {
     $info.RedirectStandardInput = $true
     $info.RedirectStandardOutput = $true
     $info.RedirectStandardError = $true
+    $info.StandardOutputEncoding = New-Object Text.UTF8Encoding($false)
+    $info.StandardErrorEncoding = New-Object Text.UTF8Encoding($false)
     $process = New-Object Diagnostics.Process
     $process.StartInfo = $info
     if (-not $process.Start()) { throw 'Receiver did not start.' }
+    # Framework's StandardInput inherits Console.InputEncoding and can emit a BOM.
+    # Use an explicit no-BOM writer; never mix it with the original writer.
+    $control = New-Object IO.StreamWriter($process.StandardInput.BaseStream, (New-Object Text.UTF8Encoding($false)))
+    $process | Add-Member -NotePropertyName ControlInput -NotePropertyValue $control
     return $process
 }

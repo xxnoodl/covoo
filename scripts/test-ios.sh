@@ -15,4 +15,6 @@ print(matches[0])
 xcodebuild -project PhoneMic.xcodeproj -scheme PhoneMic -configuration Debug \
   -destination "platform=iOS Simulator,id=$device" \
   -derivedDataPath ../../build/simulator-tests -resultBundlePath ../../build/ios-tests.xcresult \
-  CODE_SIGNING_ALLOWED=NO test 2>&1 | tee ../../build/ios-tests.log
+  CODE_SIGNING_ALLOWED=YES CODE_SIGN_IDENTITY=- CODE_SIGNING_REQUIRED=YES \
+  CODE_SIGN_STYLE=Manual CODE_SIGN_ENTITLEMENTS=Tests/Simulator.entitlements \
+  test 2>&1 | tee ../../build/ios-tests.log

@@ -14,7 +14,7 @@ if (-not (Test-Path -LiteralPath $ReceiverPath)) { throw 'Build or unpack the re
 $ReceiverPath = (Resolve-Path -LiteralPath $ReceiverPath).Path
 $root = Join-Path $env:LOCALAPPDATA 'covoo'
 if ($SmokeTest) {
-    $root = Join-Path (Split-Path -Parent $PSScriptRoot) ('build\desktop-ui-check-' + [guid]::NewGuid().ToString('N'))
+    $root = Join-Path ([IO.Path]::GetTempPath()) ('covoo-desktop-ui-check-' + [guid]::NewGuid().ToString('N'))
 }
 [IO.Directory]::CreateDirectory($root) | Out-Null
 $secretPath = Join-Path $root 'pairing.dpapi'
@@ -29,6 +29,8 @@ $script:pairingShown = $false
 $script:closing = $false
 $script:stopping = $false
 $script:bootstrapped = $false
+$script:processSample = $null
+$script:processHealth = 'Receiver process CPU: waiting for samples'
 
 $form = New-Object Windows.Forms.Form
 $form.Text = 'covoo'
@@ -125,10 +127,11 @@ $start.Add_Click({
         if ($SmokeTest) { $arguments += @('--port', '0', '--no-discovery') }
         if ($output.SelectedIndex -gt 0) { $arguments += @('--audio-device', [string]$output.SelectedItem) }
         $script:engine = New-ReceiverProcess $ReceiverPath $arguments
-        $script:engine.StandardInput.WriteLine($record)
-        $script:engine.StandardInput.Flush()
+        $script:engine.ControlInput.WriteLine($record)
+        $script:engine.ControlInput.Flush()
         $script:channel = New-Object CovooReceiverChannel($script:engine)
         $script:pairingShown = $false; $script:stopping = $false; $script:bootstrapped = $false
+        $script:processSample = $null
         $health.Text = 'Starting receiver. Waiting for protected pairing storage.'
         Set-Running $true
         $preferences = @{ network = [string]$network.SelectedItem; output = [string]$output.SelectedItem } | ConvertTo-Json
@@ -138,7 +141,7 @@ $start.Add_Click({
 function Request-Stop {
     if ($script:engine -and -not $script:engine.HasExited -and -not $script:stopping) {
         $script:stopping = $true; $stop.Enabled = $false
-        $script:engine.StandardInput.Close()
+        $script:engine.ControlInput.Close()
         Show-Message 'Stopping receiver. Waiting for recording workers to finish.'
     }
 }
@@ -171,7 +174,7 @@ $timer.Add_Tick({
                     if ($script:bootstrapped) { throw 'Unexpected private bootstrap record.' }
                     Protect-Pairing $line.Substring(14) $secretPath
                     $script:bootstrapped = $true
-                    $script:engine.StandardInput.WriteLine('START'); $script:engine.StandardInput.Flush()
+                    $script:engine.ControlInput.WriteLine('START'); $script:engine.ControlInput.Flush()
                 } else { Show-Message $line }
         }
         if ($script:engine.HasExited -and $script:channel.Finished) {
@@ -186,6 +189,20 @@ $timer.Add_Tick({
             return
         }
         if ($script:stopping) { return }
+        $now = [Diagnostics.Stopwatch]::GetTimestamp()
+        if (-not $script:processSample -or ($now - $script:processSample.tick) -ge [Diagnostics.Stopwatch]::Frequency) {
+            $script:engine.Refresh()
+            $cpuTime = $script:engine.TotalProcessorTime.TotalSeconds
+            $cpu = 'Waiting for second sample'
+            if ($script:processSample) {
+                $elapsed = ($now - $script:processSample.tick) / [double][Diagnostics.Stopwatch]::Frequency
+                $percent = 100 * ($cpuTime - $script:processSample.cpu) / $elapsed / [Environment]::ProcessorCount
+                $cpu = ('{0:F1}% of total logical CPU capacity' -f [Math]::Max(0, $percent))
+            }
+            $script:processSample = @{ tick = $now; cpu = $cpuTime }
+            $script:processHealth = "Receiver process CPU: $cpu`r`nReceiver process working set: " +
+                ('{0:F1} MiB (OS observation)' -f ($script:engine.WorkingSet64 / 1MB))
+        }
         $page = Join-Path $script:runDirectory 'pairing.html'
         if (-not $script:pairingShown -and (Test-Path -LiteralPath $page)) {
             $pairing.Navigate(([uri]$page).AbsoluteUri); $script:pairingShown = $true
@@ -195,7 +212,9 @@ $timer.Add_Tick({
             $status = [IO.File]::ReadAllText($statusPath) | ConvertFrom-Json
             $age = [DateTimeOffset]::UtcNow.ToUnixTimeMilliseconds() - [double]$status.updated_ms
             $state = if ($age -gt 5000) { 'Status unavailable: snapshot is stale.' } else { [string]$status.state }
-            $health.Text = $state + "`r`n`r`n" + (($status.rows | ForEach-Object { $_[0] + ': ' + $_[1] }) -join "`r`n")
+            $rows = $status.rows | Where-Object { $_[0] -ne 'CPU and memory' }
+            $health.Text = $state + "`r`n`r`n" + $script:processHealth + "`r`n" +
+                (($rows | ForEach-Object { $_[0] + ': ' + $_[1] }) -join "`r`n")
         }
     } catch {
         Show-Message ('Desktop error: ' + $_.Exception.Message)
@@ -218,6 +237,7 @@ try {
             try {
                 if ([DateTime]::UtcNow -gt $deadline) { throw ('Desktop smoke timed out. ' + $log.Text) }
                 if ($script:engine -and $health.Text.StartsWith('Waiting for phone connection') -and
+                    $health.Text.Contains('% of total logical CPU capacity') -and $health.Text.Contains('MiB (OS observation)') -and
                     $pairing.Document -and $pairing.Document.GetElementsByTagName('svg').Count -gt 0) {
                     if ($start.Enabled -or -not $stop.Enabled -or $output.Enabled) { throw 'Running controls are inconsistent.' }
                     $script:smokePassed = $true
@@ -250,7 +270,7 @@ try {
     }
 } finally {
     $timer.Stop(); $timer.Dispose()
-    if ($script:engine) { $script:engine.StandardInput.Close(); $script:engine.Dispose() }
+    if ($script:engine) { $script:engine.ControlInput.Close(); $script:engine.Dispose() }
     $form.Dispose(); $instance.Dispose()
     if ($SmokeTest) {
         if ($smokeTimer) { $smokeTimer.Dispose() }

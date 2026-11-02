@@ -37,40 +37,24 @@ jobs:
       - name: Desktop channel check
         if: runner.os == 'Windows'
         shell: powershell
-        run: ./scripts/test-desktop.ps1
+        run: |
+          [Console]::InputEncoding = New-Object Text.UTF8Encoding($true)
+          ./scripts/test-desktop.ps1
       - run: cargo run -p windows-receiver --locked
       - run: cargo run --release --locked -p audio-transport --example crypto_bench
       - name: Package Windows receiver
         if: runner.os == 'Windows'
-        shell: pwsh
-        run: |
-          New-Item -ItemType Directory -Force build/windows | Out-Null
-          Copy-Item target/release/windows-receiver.exe build/windows/covoo-receiver.exe
-          Copy-Item scripts/start-receiver.cmd build/windows/start-receiver.cmd
-          Copy-Item scripts/start-desktop.cmd,scripts/desktop.ps1,scripts/desktop-common.ps1 build/windows/
-          Copy-Item docs/testing/desktop-setup.md build/windows/Desktop-setup.md
-          Copy-Item scripts/start-daw.cmd build/windows/start-daw.cmd
-          Copy-Item scripts/start-daw-fast.cmd build/windows/start-daw-fast.cmd
-          Copy-Item scripts/start-daw-lowlatency.cmd build/windows/start-daw-lowlatency.cmd
-          Copy-Item scripts/start-daw-balanced.cmd build/windows/start-daw-balanced.cmd
-          Copy-Item scripts/start-headphone-check.cmd build/windows/start-headphone-check.cmd
-          Copy-Item scripts/headphone-check.ps1 build/windows/headphone-check.ps1
-          Copy-Item scripts/latency-audit.py build/windows/latency-audit.py
-          Copy-Item scripts/session-dashboard.py build/windows/session-dashboard.py
-          Copy-Item scripts/compare-recordings.py build/windows/compare-recordings.py
-          Copy-Item scripts/compare-segments.py build/windows/compare-segments.py
-          Copy-Item scripts/network-snapshot.ps1 build/windows/network-snapshot.ps1
-          Copy-Item docs/testing/m3-device.md build/windows/DAW-setup.md
-          Copy-Item docs/performance/latency-investigation.md build/windows/Latency-check.md
-          Copy-Item docs/testing/low-period-output.md build/windows/Low-period-test.md
-          Copy-Item docs/testing/direct-headphones.md build/windows/Headphone-check.md
-          Copy-Item docs/testing/receiver-dashboard.md build/windows/Receiver-status.md
-          Copy-Item licenses build/windows/licenses -Recurse
+        shell: powershell
+        run: ./scripts/package-windows.ps1 -Destination build/windows
+      - name: Windows installation check
+        if: runner.os == 'Windows'
+        shell: powershell
+        run: ./scripts/test-windows-package.ps1 -PackageDirectory build/windows
       - uses: actions/upload-artifact@v4
         if: runner.os == 'Windows'
         with:
           name: covoo-windows-x64
-          path: build/windows/*
+          path: build/windows.zip
           if-no-files-found: error
   ios:
     timeout-minutes: 30

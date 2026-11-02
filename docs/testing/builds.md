@@ -41,6 +41,9 @@ bash scripts/test-swift-network.sh
 ```
 
 The simulator test uses synthetic PCM and does not validate the microphone.
+The test host uses a local ad-hoc simulator signature and test-only Keychain
+entitlements, without an Apple account. Unsigned device builds remain separate;
+this does not establish device signing or physical Keychain acceptance.
 The network test compiles the same Swift sender with Network.framework and
 CryptoKit on macOS and checks it against the Rust receiver on loopback.
 

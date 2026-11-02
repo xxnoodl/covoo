@@ -208,5 +208,10 @@ fn desktop_line() -> io::Result<String> {
     if line.len() > 65536 || !line.ends_with('\n') {
         return Err(io::Error::other("Invalid desktop pipe record"));
     }
+    // Windows .NET Framework may put a UTF-8 BOM on its redirected stdin writer.
+    // It is a stream marker, not part of the JSON record or START command.
+    if line.starts_with('\u{feff}') {
+        line.drain(..'\u{feff}'.len_utf8());
+    }
     Ok(line)
 }

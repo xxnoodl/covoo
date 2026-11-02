@@ -19,10 +19,10 @@ function Run-DesktopSession([string]$Record, [string]$Name) {
     $process = New-ReceiverProcess $ReceiverPath @('--serve', '--desktop-session', '--host', '127.0.0.1',
         '--port', '0', '--no-discovery', '--seconds', '30', '--output', $output)
     try {
-        $process.StandardInput.WriteLine($Record); $process.StandardInput.Flush()
+        $process.ControlInput.WriteLine($Record); $process.ControlInput.Flush()
         $bootstrap = Read-Line $process.StandardOutput
         if (-not $bootstrap -or -not $bootstrap.StartsWith('COVOO_PAIRING ')) {
-            $process.StandardInput.Close()
+            $process.ControlInput.Close()
             if ($process.WaitForExit(10000)) {
                 throw ('Private pairing bootstrap missing. Exit ' + $process.ExitCode + ': ' + $process.StandardError.ReadToEnd())
             }
@@ -32,7 +32,7 @@ function Run-DesktopSession([string]$Record, [string]$Name) {
         Protect-Pairing $privateRecord $secret
         Assert-True ((Read-Pairing $secret) -eq $privateRecord) 'DPAPI round trip failed.'
         Assert-True (-not ([Text.Encoding]::UTF8.GetString([IO.File]::ReadAllBytes($secret))).Contains('private_key')) 'Raw secret written to disk.'
-        $process.StandardInput.WriteLine('START'); $process.StandardInput.Flush()
+        $process.ControlInput.WriteLine('START'); $process.ControlInput.Flush()
         $deadline = [DateTime]::UtcNow.AddSeconds(10)
         while (-not (Test-Path -LiteralPath (Join-Path $output 'status.json'))) {
             if ($process.HasExited -or [DateTime]::UtcNow -gt $deadline) { throw 'Receiver did not publish status.' }
@@ -41,7 +41,7 @@ function Run-DesktopSession([string]$Record, [string]$Name) {
         $status = Get-Content -LiteralPath (Join-Path $output 'status.json') -Raw | ConvertFrom-Json
         Assert-True ($status.state -eq 'Waiting for phone connection') 'Idle authentication state is wrong.'
         $page = [IO.File]::ReadAllText((Join-Path $output 'pairing.html'))
-        $process.StandardInput.Close()
+        $process.ControlInput.Close()
         Assert-True ($process.WaitForExit(10000)) 'EOF did not gracefully stop receiver.'
         Assert-True ($process.ExitCode -eq 0) 'Receiver exit failed.'
         $final = [IO.File]::ReadAllText((Join-Path $output 'status.json')) | ConvertFrom-Json
@@ -54,7 +54,7 @@ function Run-DesktopSession([string]$Record, [string]$Name) {
         Assert-True (-not $publicFiles.Contains($tokenHex) -and -not $publicFiles.Contains('private_key')) 'Credentials leaked into public diagnostics.'
         return @{ record = $privateRecord; page = $page }
     } finally {
-        if (-not $process.HasExited) { $process.StandardInput.Close(); $process.WaitForExit(10000) | Out-Null }
+        if (-not $process.HasExited) { $process.ControlInput.Close(); $process.WaitForExit(10000) | Out-Null }
         $process.Dispose()
         # Test QR pages are credentials too; never retain them as evidence.
         $pagePath = Join-Path $output 'pairing.html'
@@ -91,7 +91,7 @@ try {
 
     $bad = New-ReceiverProcess $ReceiverPath @('--serve', '--desktop-session', '--host', '127.0.0.1', '--no-discovery')
     try {
-        $bad.StandardInput.WriteLine('{"version":999}'); $bad.StandardInput.Close()
+        $bad.ControlInput.WriteLine('{"version":999}'); $bad.ControlInput.Close()
         Assert-True ($bad.WaitForExit(10000) -and $bad.ExitCode -ne 0) 'Invalid credentials did not fail closed.'
         Assert-True (-not $bad.StandardOutput.ReadToEnd().Contains('COVOO_PAIRING ')) 'Invalid credentials were silently replaced.'
     } finally { $bad.Dispose() }

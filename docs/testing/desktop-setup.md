@@ -47,7 +47,7 @@ powershell -STA -File scripts/desktop.ps1 -ReceiverPath target/release/windows-r
 ```
 
 Both use loopback and open no audio output. The UI smoke uses an isolated
-directory under build; it does not alter a user's saved identity. Tests remove
+temporary directory; it does not alter a user's saved identity. Tests remove
 their pairing credentials/pages. Remaining acceptance: signed phone remember/
 restart/forget, Windows restart, address changes, revoke rejecting old links,
 real take stop/close, endpoint removal and USB/interface changes. See todo.md.
