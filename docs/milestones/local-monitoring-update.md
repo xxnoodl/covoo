@@ -32,6 +32,10 @@ gate lifetime. POSIX concurrent control/render coverage and ASan/UBSan run in
 CI. Swift builds and simulator tests require macOS CI; results are recorded
 after completion. No hardware success is inferred from these tests.
 
+The macOS SDK callback test substitutes input rendering without starting any
+AudioUnit. It checks actual C fanout plus monitor gain/mute, unchanged archive
+and network PCM, silent output on input failure, and output-topology rejection.
+
 ## Hardware validation
 
 None for this update. No phone deployment, headphone playback, unplug test or
