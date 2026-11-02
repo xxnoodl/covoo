@@ -26,11 +26,24 @@ stale validation; volume changes cannot reopen an inhibited gate.
 
 ## Verification
 
-Windows native tests pass for queue behavior, level/ramp, immediate mute,
-invalidation/stale-lease rejection, level updates staying disarmed and retained
-gate lifetime. POSIX concurrent control/render coverage and ASan/UBSan run in
-CI. Swift builds and simulator tests require macOS CI; results are recorded
-after completion. No hardware success is inferred from these tests.
+Local `scripts/verify.ps1` passed formatting, Clippy with warnings denied, 35
+workspace Rust tests, locked release build and CLI smoke. Locked debug build,
+ten Python tests and `scripts/test-native-windows.ps1` also passed.
+
+[Revision 6da884a CI](https://github.com/xxnoodl/covoo/actions/runs/41365575199)
+passed Windows, Linux and macOS: native queue/gate tests, POSIX concurrent
+controls with ASan/UBSan, the real Swift/Rust encrypted transport check,
+unsigned simulator/device builds and ten simulator tests. Gate tests cover
+level/ramp, immediate mute, stale-lease rejection, updates staying disarmed and
+retained lifetime. Simulator tests cover rejected routes and unchanged queued
+PCM under monitor gain/mute. No hardware success is inferred from these tests.
+
+Xcode reported an unreachable-branch warning for the inline lock-free allocation
+guard. Follow-up eb41a13 uses the existing queue's helper-function pattern while
+retaining the guard. [Revision eb41a13 CI](https://github.com/xxnoodl/covoo/actions/runs/41393582372)
+passed all three platforms, including both unsigned iOS builds, ten simulator
+tests, the callback regression and sanitizer checks. The MonitorGate compiler
+warning is absent; Xcode's unrelated AppIntents metadata notice remains.
 
 The macOS SDK callback test substitutes input rendering without starting any
 AudioUnit. It checks actual C fanout plus monitor gain/mute, unchanged archive
@@ -53,7 +66,7 @@ actual capture format, audible quality and latency remain physical gates.
 
 ## Next milestone and required user actions
 
-M6 monitoring is implemented pending CI and hardware acceptance; broader
+M6 monitoring is implemented and automated-verified, pending hardware acceptance; broader
 reliability remains partial. Deploy and follow the local-monitoring test guide
 only when ready. No immediate recording, device setup or installation is needed
 to continue independent development.

@@ -28,6 +28,14 @@ unmapped cross-device timestamps. Format agreement, replay protection, stream
 identity authentication and control messages are provided by the separate M2
 TLS/UDP layer. See docs/decisions/0003-secure-lan.md and docs/security/m2-threat-model.md.
 
+The iOS sender currently uses its Core Audio callback host timestamp. With local
+phone monitoring enabled this is the output-render callback timestamp; otherwise
+it is the input callback timestamp. The phone report identifies the source.
+Neither is calibrated ADC time. An output timestamp may be ahead of callback
+execution; negative software capture-age observations are excluded rather than
+reported as physical latency. Do not compare age estimates across callback modes
+as an acoustic latency measurement.
+
 encode/decode use caller-owned storage and return explicit errors. decode
 validates the complete packet before mutating output; only frame-count samples
 are written. Slice conversions use unwrap only after exact size validation.
