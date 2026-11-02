@@ -14,6 +14,12 @@ phone. They also confirm remembered pairing survives fully closing/reopening
 covoo and connects immediately after tapping Connect, without rescanning.
 Whole-take PC continuity remains pending.
 
+Ableton latency is now the priority. Revision b90349a adds independent dry PC
+monitoring alongside the cable feed, stopped-state receiver/monitor profiles and
+a read-only historical Ableton report. It passed Windows/Linux/macOS CI. The
+Windows ZIP is `build/covoo-windows-b90349a.zip`. Dual-output hardware acceptance
+and actual Ableton-effects monitoring latency remain pending; no settings changed.
+
 ## Read first
 
 - `AGENTS.md`, `todo.md`, `docs/milestones/desktop-setup-update.md` and
@@ -36,10 +42,10 @@ Whole-take PC continuity remains pending.
    supports dry recording, not faster monitoring of Ableton effects. Physical
    coexistence and latency remain unverified. The earlier single-output app could
    not feed headphones and the cable simultaneously.
-3. Inspect CI and the packaged UI for this change and record exact results. Work
-   is on `desktop-setup`. Previous phone repair e663989 passed all CI jobs:
-   https://github.com/xxnoodl/covoo/actions/runs/41402040877. Its iPhone app remains
-   compatible; no phone update is needed for these Windows output options.
+3. Work is on `desktop-setup`. b90349a passed all three CI jobs:
+   https://github.com/xxnoodl/covoo/actions/runs/41406488422. Windows passed 38 Rust
+   tests, the CPAL cached-enumerator MTA lifetime regression and package checks.
+   Current signed iPhone app remains compatible; no phone update is needed.
 4. Ableton-effect monitoring still depends on the driver/input/output path. Native
    capture prerequisites and approved feasibility research can proceed, but no
    ASIO implementation, driver installation, aggregation or security changes.

@@ -71,10 +71,24 @@ through stream destruction. The guard cannot move across threads. One parked
 owner thread persists until process exit; no work is added to callbacks and no
 dependency or application unsafe code changes. The new Windows regression queries
 from temporary threads repeatedly, accepting graceful device/service errors but
-never a native process crash. Corrected CI results are recorded after completion.
+never a native process crash.
 This does not claim to fix the reported physical headphone pitch symptom.
 
 Reference: [Microsoft COM apartments](https://learn.microsoft.com/en-us/windows/win32/com/processes--threads--and-apartments).
+
+[Revision b90349a CI](https://github.com/xxnoodl/covoo/actions/runs/41406488422)
+passed Windows, Linux and macOS. Windows passed the cached-enumerator regression,
+38 workspace tests, latency configuration/parser checks and packaged UI/install/
+rollback suite. Linux passed its 37 workspace tests and native sanitizers; macOS
+passed encrypted Swift/Rust interoperability, native callback/sanitizer checks,
+unsigned simulator/device builds and eleven unit tests plus the pairing UI test.
+No hardware playback is inferred from these results.
+
+The clean local Windows package is `build/covoo-windows-b90349a.zip`, manifest
+build `b90349a-a9bb852d163c`, source `b90349ad6e1078298819f9ecb75bad8a1f634efb`.
+ZIP SHA-256: `3225c428d72707d0a751e05ad29a1a76f17a2597e5130c11edba54cc1bc68471`.
+Its isolated native-launcher/install/update/rollback/uninstall suite passed.
+The existing signed iPhone app remains compatible; no phone update is required.
 
 ## Physical acceptance
 

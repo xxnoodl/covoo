@@ -22,6 +22,14 @@ separately. Offline session listing excludes monitor sidecars as archive session
 Stop/disconnect releases all three senders before joining workers and finishing
 outputs. Source samples are unmodified in every sink.
 
+Pinned CPAL caches its Windows enumerator globally. Legacy enumeration/output
+setup uses a process-lifetime MTA owner and per-calling-thread guards so temporary
+take workers do not invalidate that cache. Guards remain through stream teardown
+and cannot cross threads. One parked owner thread survives until process exit;
+no COM setup, synchronization or work is added to audio callbacks. This was
+introduced after a native Windows CI crash in multi-worker enumeration; the
+corrected regression passed. It is not evidence of a physical pitch repair.
+
 The desktop can request independent 40 ms compatibility, 16 ms low-period or
 8 ms low-period profiles for both outputs. These are requested source targets,
 not measured monitoring delay. The device may impose a larger effective floor.
