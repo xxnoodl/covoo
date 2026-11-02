@@ -36,7 +36,8 @@ them. A normal desktop shutdown removes its pairing page. Revocation also remove
 old desktop pairing pages after crashes. It does not delete recordings.
 
 The updated phone app adds Remember receiver and Forget receiver. Remember
-stores the validated link in device-only Keychain; app restart restores it without
+stores the validated link in device-only Keychain; fully closing and reopening
+covoo restores it without
 connecting. Disconnect does not forget. Forget deletes only that phone's copy.
 Stop the Windows receiver and use Revoke saved pairing to invalidate all old
 links: next Start creates a new certificate and token. Scan the new QR. A corrupt

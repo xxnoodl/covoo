@@ -77,3 +77,8 @@ the session. That defect blocks Remember/Forget acceptance until the UI repair
 is retested. See [the pairing button repair](pairing-buttons-update.md).
 Standard-user policy, update/data retention, Start menu details, phone relaunch,
 Windows reboot, route changes and broader M3-M6 physical gates remain in todo.md.
+
+The user later reports that the connection holds after receiver Stop/Start during
+an active take. This is connection-state observation, not measured resumed packet
+delivery or complete PC audio. Saved pairing did not survive closing/reopening
+the older iPhone app; the separated-button build still needs device retesting.

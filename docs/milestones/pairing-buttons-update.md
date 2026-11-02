@@ -20,17 +20,34 @@ dispatch rather than only calling the model or Keychain helpers.
 
 ## Verification
 
-Local required Rust checks and the iOS CI outcome are recorded after completion.
-There is no local Xcode. Added UI coverage is not a pass until CI executes it.
-User-device retesting of the repaired buttons remains deferred in todo.md.
+Local `scripts/verify.ps1` passed formatting, Clippy with warnings denied, all
+36 workspace Rust tests, locked release build and CLI smoke. Locked debug build
+also passed. There is no local Xcode.
+
+[Revision e663989 CI](https://github.com/xxnoodl/covoo/actions/runs/41402040877)
+passed Windows, Linux and macOS. The actual pairing UI test passed (60.516 seconds),
+including Remember, app close/reopen, Forget and another close/reopen. All eleven
+existing simulator tests, unsigned simulator/device builds, encrypted Swift/Rust
+checks and native sanitizer/callback checks also passed. No physical acceptance
+is inferred. User-device retesting remains deferred in todo.md.
+
+[Updated unsigned iPhone package](https://github.com/xxnoodl/covoo/actions/runs/41402040877/artifacts/13121613707)
+contains the repair; extract and sign through the established iloader process.
 
 ## User acceptance recorded separately
 
 While testing the supplied builds, the user confirmed Windows install/uninstall,
 Stop receiver, normal window close and reconnect/pairing after receiver Stop/Start
-without rescanning. Phone relaunch, Windows reboot, revoke rejecting old links,
-endpoint removal and interrupted-take integrity were not established by that
-report. These observations do not accept the broader audio milestones.
+without rescanning. The user then clarified that this also works when stopping
+and starting the receiver during an active take: they report the connection holds.
+No packet trace or archive comparison was supplied, so PC audio continuity and
+actual resumed packet delivery remain unverified.
+
+The user reports that saved pairing does not survive fully closing and reopening
+covoo in the shared-button build. The button defect may explain it, but that is
+an inference; physical persistence after the repair is still pending. Windows
+reboot, revoke rejecting old links and endpoint removal remain separate checks.
+These observations do not accept the broader audio milestones.
 
 References: [Apple borderless button style](https://developer.apple.com/documentation/swiftui/borderlessbuttonstyle),
 [XcodeGen UI test targets](https://github.com/yonaskolb/XcodeGen/blob/master/Docs/ProjectSpec.md).

@@ -1,16 +1,21 @@
 # Next session
 
-Desktop controls, integrated pairing/status, saved pairing and per-user Windows
-packaging are implemented. The installer and native launcher passed isolated
-Windows automation. Application revision 312b687 passed Windows/Linux/macOS CI,
-including Keychain and all eleven simulator tests plus packaged install/update/
-rollback/uninstall checks. Physical acceptance remains pending. No recording is
-needed for independent work.
+Desktop controls, saved pairing and per-user Windows packaging are implemented.
+The user confirms basic install/uninstall, Stop receiver, normal window close
+and receiver Stop/Start re-pairing without rescanning. They found that the shared
+iOS Remember/Forget row disconnects when tapping Remember. A repair now puts
+these actions in separate rows with explicit button styles. Revision e663989
+passed Windows/Linux/macOS CI, including the real UI persistence regression and
+all eleven unit tests. The new IPA is linked in the pairing repair report. The
+user reports that pairing does not survive closing/reopening the old app, and
+that the connection holds after receiver Stop/Start during an active take.
+Physical repair acceptance and whole-take PC continuity remain pending.
 
 ## Read first
 
 - `AGENTS.md`, `todo.md`, `docs/milestones/desktop-setup-update.md` and
-  `docs/milestones/windows-package-update.md`.
+  `docs/milestones/windows-package-update.md` and
+  `docs/milestones/pairing-buttons-update.md`.
 - `docs/decisions/0009-desktop-pairing.md` and `docs/testing/desktop-setup.md`.
 - Desktop scripts, receiver `main.rs`, `server.rs`, `dashboard.rs`, `live.rs`.
 - iOS `PairingStore.swift`, `CaptureModel.swift`, `AudioStreamer.swift` and
@@ -18,10 +23,11 @@ needed for independent work.
 
 ## Next work
 
-1. Work is on `desktop-setup`; application revision 312b687 passed all CI jobs:
-   https://github.com/xxnoodl/covoo/actions/runs/41398110852. The local clean-source
-   ZIP is `build/covoo-windows-312b687.zip`. Documentation-only follow-up records
-   this evidence. No local Mac or new physical validation was used.
+1. Work is on `desktop-setup`. Revision e663989 passed all three CI jobs:
+   https://github.com/xxnoodl/covoo/actions/runs/41402040877. The repaired iPhone
+   artifact is 13121613707 in that run; device retesting can be batched later.
+   The local Windows ZIP remains `build/covoo-windows-312b687.zip`; its engine
+   is unchanged by this phone UI repair. No local Mac exists.
 2. Continue remaining metrics and independent milestone work. The desktop exposes
    receiver process CPU/memory and the existing legacy 40 ms route. Receiver RTT
    and phone route/format are unavailable; experimental presets remain in CLI.
@@ -30,7 +36,7 @@ needed for independent work.
    Stop preserves desktop identity; Revoke requires a stopped receiver and rotates
    certificate/token on next Start. Phone Forget deletes only its local copy.
    Address changes need rescanning. Never trust discovery to replace a pin.
-4. Batch signed-device pairing/restart/revoke, real take close/stop, interface and
+4. Batch signed-device pairing, closing/reopening covoo, revoke, real take close/stop, interface and
    endpoint failure tests in todo.md. M3-M6 acceptance remains open.
 
 ## Current state

@@ -48,8 +48,13 @@ acceptance gates still apply before dependent work or milestone sign-off.
   update path were not separately reported.
 - [x] Desktop Stop receiver and normal window close: user reports both work well.
   Active-take completion/PCM integrity was not supplied with this observation.
-- [x] Receiver Stop/Start re-pairing without rescanning: user reports it works.
-  Phone app relaunch and Windows reboot persistence remain separate checks.
+- [x] Receiver Stop/Start re-pairing without rescanning: user reports it works,
+  including stopping/starting the receiver during an active take while the
+  connection holds. Actual packet resumption and whole-take PC audio continuity
+  were not measured; this does not accept gap-free recovery.
+- [ ] Saved pairing after fully closing and reopening covoo on the iPhone: user
+  reports it does not survive in the shared-button build. Recheck with e663989's
+  separated buttons; CI UI persistence passed, signed-device acceptance has not.
 - [ ] iOS pairing buttons: retest Remember and Forget separately after the row
   fix. User reports the shared row disconnects their session when tapping Remember.
   The fix separates rows and button hit handling; physical acceptance is pending.
