@@ -50,8 +50,10 @@ static OSStatus input_callback(void *context, AudioUnitRenderActionFlags *flags,
     }
     AudioBufferList buffers = { .mNumberBuffers = 1,
         .mBuffers = {{ .mNumberChannels = 1, .mDataByteSize = frames * sizeof(float), .mData = c->scratch }} };
-    AudioUnitRenderActionFlags input_flags = *flags & ~kAudioUnitRenderAction_OutputIsSilence;
+    AudioUnitRenderActionFlags input_flags = *flags;
+    if (c->monitor) input_flags &= ~kAudioUnitRenderAction_OutputIsSilence;
     OSStatus status = AudioUnitRender(c->unit, &input_flags, time, 1, frames, &buffers);
+    if (!c->monitor) *flags = input_flags;
     if (status != noErr || buffers.mBuffers[0].mDataByteSize != frames * sizeof(float)) {
         if (status == noErr) status = kAudio_ParamError;
         increment(&c->render_errors, 1);
