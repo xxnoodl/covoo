@@ -43,8 +43,13 @@ passed, as did the two replay example tests and desktop PowerShell syntax checks
 The dashboard browser check passed on retry; its first invocation stopped on an
 Edge shutdown diagnostic handled as a native-command error by Windows PowerShell.
 POSIX sanitizers and Swift/Xcode checks were not performed locally.
-The new Keychain lifecycle simulator test is added but not yet run; no CI run
-for this revision is claimed. Windows packaging includes desktop scripts/setup.
+[Revision bac4905 CI](https://github.com/xxnoodl/covoo/actions/runs/41397764884)
+passed Windows, Linux and macOS, including all eleven simulator tests and the
+new Keychain lifecycle test. The initial unsigned-host entitlement failure was
+corrected with a local simulator-only ad-hoc signature. Unsigned simulator/device
+builds and encrypted Swift/Rust interoperability also passed. Later packaging
+and revision 312b687 passing CI evidence are in
+[the package update](windows-package-update.md).
 
 ## Physical acceptance and limitations
 
@@ -55,6 +60,7 @@ failure remain deferred in todo.md. M3-M6 acceptance does not change.
 
 The desktop currently exposes the legacy 40 ms route only; CLI experimental
 presets remain available. The embedded view uses Windows' existing WebBrowser
-control with navigation restricted to its pairing page. No installer, native
-capture driver, per-phone revocation or automatic address migration is provided.
+control with navigation restricted to its pairing page. Optional per-user desktop
+installation is now implemented in the package update. No native capture driver,
+per-phone revocation or automatic address migration is provided.
 Windows Forms smoke is local evidence, not interactive device acceptance.

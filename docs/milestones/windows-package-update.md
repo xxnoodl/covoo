@@ -43,8 +43,23 @@ was reproduced locally and corrected by accepting the stream marker and making
 pipe encoding explicit. The UTF-8-BOM desktop channel check now passes locally.
 The simulator harness now requests an ad-hoc local signature and test-only
 application/Keychain entitlements. Device builds stay unsigned and no Apple
-account/signing credential is used by this harness. Final CI evidence is recorded
-after the run completes; no pass is inferred from these fixes.
+account/signing credential is used by this harness.
+
+[Revision bac4905 CI](https://github.com/xxnoodl/covoo/actions/runs/41397764884)
+passed Windows, Linux and macOS. The actual Keychain lifecycle simulator test and
+all eleven tests passed, together with both unsigned builds, encrypted Swift/Rust
+transport/recovery and native sanitizer/callback checks. Windows passed the
+UTF-8-BOM channel regression and installed native launcher/setup suite. Later
+[Revision 312b687 CI](https://github.com/xxnoodl/covoo/actions/runs/41398110852)
+also passed all three platforms. Its Windows package test additionally passed
+activation rollback and junction rejection, and the installed launcher included
+the recordings button and process metrics. All eleven iOS simulator tests passed.
+No physical acceptance follows from either run.
+
+Local clean-source package: `build/covoo-windows-312b687.zip`, manifest build
+`312b687-49a639f247c1`, source `312b687ae1f6edb2378e5b24200831dd930b3b7e`.
+SHA-256: `32708217a3b41d881f35af47de6b239339b55333c7e5475d830857c48c748d5f`.
+This ZIP passed the complete isolated install/update/rollback/uninstall suite.
 
 Apple documents the [Keychain access-group requirement](https://developer.apple.com/documentation/security/ksecattraccessgroup)
 and [application identity from code signing](https://developer.apple.com/documentation/security/sharing-access-to-keychain-items-among-a-collection-of-apps).

@@ -56,8 +56,10 @@ acceptance gates still apply before dependent work or milestone sign-off.
   restart with remembered pairing, phone Forget and Windows Revoke rejecting old
   links. Check Keychain locked-device behavior and corrupt DPAPI failure. See
   docs/testing/desktop-setup.md and docs/milestones/desktop-setup-update.md.
-- [ ] New iOS Keychain lifecycle simulator test and unsigned builds in macOS CI.
-  Added coverage is not a claimed pass; no local Xcode is available.
+- [x] New iOS Keychain lifecycle simulator test and unsigned builds in macOS CI:
+  bac4905 and 312b687 passed all eleven simulator tests, including Keychain CRUD, plus
+  unsigned simulator/device builds. Automated evidence only; signed-device
+  acceptance remains pending. See docs/milestones/windows-package-update.md.
 
 - [ ] Local phone monitoring: signed build, default-off capture regression,
   wired-headphone gain/mute and source continuity, repeated takes, rejected routes,
@@ -120,7 +122,7 @@ acceptance gates still apply before dependent work or milestone sign-off.
 - [ ] Deliberate background recording support; current policy stops on background/lock.
 - [ ] Saved pairing and installation acceptance. Windows DPAPI
   persistence is locally automated-verified. Phone Keychain persistence is
-  implemented; simulator/build and signed-device verification remain pending.
+  simulator/build verification passed in CI; signed-device acceptance is pending.
 
 See [M4](docs/milestones/M4.md), [M5](docs/milestones/M5.md) and
 [M6](docs/milestones/M6.md) for implemented work and remaining acceptance limits.

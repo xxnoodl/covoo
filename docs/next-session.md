@@ -2,9 +2,10 @@
 
 Desktop controls, integrated pairing/status, saved pairing and per-user Windows
 packaging are implemented. The installer and native launcher passed isolated
-Windows automation. CI is checking simulator Keychain entitlements and a Windows
-UTF-8 BOM correction; physical acceptance remains pending. No recording is needed
-for independent work.
+Windows automation. Application revision 312b687 passed Windows/Linux/macOS CI,
+including Keychain and all eleven simulator tests plus packaged install/update/
+rollback/uninstall checks. Physical acceptance remains pending. No recording is
+needed for independent work.
 
 ## Read first
 
@@ -17,10 +18,10 @@ for independent work.
 
 ## Next work
 
-1. Inspect the latest `desktop-setup` branch CI for Keychain simulator tests and
-   packaged Windows setup. The initial run failed on unsigned-host entitlements
-   (-34018) and Framework stdin's UTF-8 BOM. Fixes were pushed; record actual
-   outcomes rather than inferring success. No local Mac exists.
+1. Work is on `desktop-setup`; application revision 312b687 passed all CI jobs:
+   https://github.com/xxnoodl/covoo/actions/runs/41398110852. The local clean-source
+   ZIP is `build/covoo-windows-312b687.zip`. Documentation-only follow-up records
+   this evidence. No local Mac or new physical validation was used.
 2. Continue remaining metrics and independent milestone work. The desktop exposes
    receiver process CPU/memory and the existing legacy 40 ms route. Receiver RTT
    and phone route/format are unavailable; experimental presets remain in CLI.
