@@ -9,7 +9,9 @@ passed Windows/Linux/macOS CI, including the real UI persistence regression and
 all eleven unit tests. The new IPA is linked in the pairing repair report. The
 user reports that pairing does not survive closing/reopening the old app, and
 that the connection holds after receiver Stop/Start during an active take.
-Physical repair acceptance and whole-take PC continuity remain pending.
+The user now confirms the repaired Remember and Forget buttons work on their
+phone. Persistence after fully closing/reopening the repaired app and whole-take
+PC continuity remain pending.
 
 ## Read first
 

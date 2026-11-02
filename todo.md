@@ -55,9 +55,9 @@ acceptance gates still apply before dependent work or milestone sign-off.
 - [ ] Saved pairing after fully closing and reopening covoo on the iPhone: user
   reports it does not survive in the shared-button build. Recheck with e663989's
   separated buttons; CI UI persistence passed, signed-device acceptance has not.
-- [ ] iOS pairing buttons: retest Remember and Forget separately after the row
-  fix. User reports the shared row disconnects their session when tapping Remember.
-  The fix separates rows and button hit handling; physical acceptance is pending.
+- [x] iOS pairing buttons: user confirms Remember and Forget now work after the
+  row repair in the supplied e663989 build. App close/reopen persistence remains
+  a separate check above; no additional audio acceptance is inferred.
 
 - [ ] Windows package on a standard user account: downloaded ZIP/extraction,
   native launcher and visible startup errors, update, actual Start menu shortcuts,
@@ -140,7 +140,8 @@ acceptance gates still apply before dependent work or milestone sign-off.
 - [ ] Remaining saved pairing and installation acceptance. Windows DPAPI
   persistence is locally automated-verified; receiver Stop/Start without rescanning
   and basic install/uninstall are user-confirmed. Phone Keychain simulator/build
-  verification passed in CI; Remember/Forget repair and relaunch tests are pending.
+  verification passed in CI; Remember/Forget buttons are user-confirmed working.
+  Persistence after fully closing/reopening covoo remains pending.
 
 See [M4](docs/milestones/M4.md), [M5](docs/milestones/M5.md) and
 [M6](docs/milestones/M6.md) for implemented work and remaining acceptance limits.

@@ -29,7 +29,8 @@ passed Windows, Linux and macOS. The actual pairing UI test passed (60.516 secon
 including Remember, app close/reopen, Forget and another close/reopen. All eleven
 existing simulator tests, unsigned simulator/device builds, encrypted Swift/Rust
 checks and native sanitizer/callback checks also passed. No physical acceptance
-is inferred. User-device retesting remains deferred in todo.md.
+is inferred. The user subsequently confirmed both repaired buttons work on their
+phone; full app close/reopen persistence remains separate in todo.md.
 
 [Updated unsigned iPhone package](https://github.com/xxnoodl/covoo/actions/runs/41402040877/artifacts/13121613707)
 contains the repair; extract and sign through the established iloader process.
@@ -45,8 +46,11 @@ actual resumed packet delivery remain unverified.
 
 The user reports that saved pairing does not survive fully closing and reopening
 covoo in the shared-button build. The button defect may explain it, but that is
-an inference; physical persistence after the repair is still pending. Windows
-reboot, revoke rejecting old links and endpoint removal remain separate checks.
+an inference. After installing the repair, the user confirms Remember and Forget
+now work. This accepts the two button actions on their phone; they did not
+separately confirm persistence after fully closing/reopening the repaired app.
+Windows reboot, revoke rejecting old links and endpoint removal remain separate
+checks.
 These observations do not accept the broader audio milestones.
 
 References: [Apple borderless button style](https://developer.apple.com/documentation/swiftui/borderlessbuttonstyle),
