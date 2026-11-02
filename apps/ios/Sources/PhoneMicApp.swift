@@ -21,6 +21,11 @@ struct PhoneMicApp: App {
                             .autocorrectionDisabled()
                             .disabled(capture.state.recording || capture.requesting)
                         Text("Scan the receiver QR with Camera, or paste its pairing link here.").font(.caption)
+                        HStack {
+                            Button("Remember receiver") { capture.rememberReceiver() }
+                            Button("Forget receiver") { capture.forgetReceiver() }
+                        }
+                        .disabled(capture.state.recording || capture.requesting)
                         Toggle("Packet protection", isOn: $capture.packetProtection)
                             .disabled(capture.streamState.connected || capture.state.recording || capture.requesting)
                         Text("Sends a backup copy to reduce brief audio gaps. Uses about twice the network traffic. Choose before connecting.").font(.caption)

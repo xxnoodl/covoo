@@ -70,6 +70,7 @@ pub struct Server {
     stop: Arc<AtomicBool>,
     output: PathBuf,
     route: Option<RouteOptions>,
+    control_owner: Arc<Mutex<()>>,
 }
 
 impl Server {
@@ -93,6 +94,7 @@ impl Server {
             stop: Arc::new(AtomicBool::new(false)),
             output,
             route: None,
+            control_owner: Arc::new(Mutex::new(())),
         })
     }
     pub fn stop_flag(&self) -> Arc<AtomicBool> {
@@ -119,7 +121,7 @@ impl Server {
             .min_dimensions(400, 400)
             .build();
         let page = format!(
-            "<!doctype html><meta charset=utf-8><title>covoo pairing</title><body style='font:18px sans-serif;max-width:700px;margin:40px auto'><h1>covoo</h1><p>Scan with your iPhone camera, then connect in covoo.</p>{svg}<p><a href='dashboard.html'>Receiver status</a></p><p>Keep this pairing page private. It permits microphone streaming to this receiver while it is running.</p><details><summary>Manual pairing link</summary><textarea style='width:100%;height:100px' readonly>{link}</textarea></details></body>"
+            "<!doctype html><meta charset=utf-8><meta http-equiv=X-UA-Compatible content=IE=edge><title>covoo pairing</title><body style='font:18px sans-serif;max-width:700px;margin:40px auto'><h1>covoo</h1><p>Scan with your iPhone camera, then connect in covoo.</p>{svg}<p><a href='dashboard.html'>Receiver status</a></p><p>Keep this pairing page private. It permits microphone streaming to this receiver while it is running.</p><details><summary>Manual pairing link</summary><textarea style='width:100%;height:100px' readonly>{link}</textarea></details></body>"
         );
         let path = self.output.join("pairing.html");
         fs::write(&path, page)?;
@@ -137,7 +139,7 @@ impl Server {
         let stop = self.stop.clone();
         let udp = self.udp.try_clone()?;
         let udp_thread = thread::spawn(move || udp_loop(udp, active, stop));
-        let control_owner = Arc::new(Mutex::new(()));
+        let control_owner = self.control_owner.clone();
         let connections = Arc::new(AtomicUsize::new(0));
         let began = Instant::now();
         if let Some(dashboard) = &dashboard {
@@ -261,7 +263,11 @@ impl Server {
                 "Not reported by phone control protocol".into(),
             ),
         ];
-        let mut state = "No active take; pairing state not collected";
+        let mut state = if self.control_owner.try_lock().is_err() {
+            "Phone authenticated; no active take"
+        } else {
+            "Waiting for phone connection"
+        };
         if let Some(active) = self.active.lock().unwrap().as_ref() {
             let stats = active.metrics.lock().unwrap().clone();
             let packet_age = active.last_arrival.map(|last| last.elapsed());
@@ -741,7 +747,14 @@ mod tests {
         );
         server.active.lock().unwrap().take();
         let idle = server.status_snapshot(Duration::from_secs(5), false);
-        assert_eq!(idle.state, "No active take; pairing state not collected");
+        assert_eq!(idle.state, "Waiting for phone connection");
+        {
+            let _authenticated = server.control_owner.lock().unwrap();
+            assert_eq!(
+                server.status_snapshot(Duration::from_secs(5), false).state,
+                "Phone authenticated; no active take"
+            );
+        }
         assert!(!idle.rows.iter().any(|(name, _)| *name == "Phone address"));
         assert_eq!(
             server.status_snapshot(Duration::from_secs(5), true).state,

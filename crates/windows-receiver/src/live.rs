@@ -155,6 +155,24 @@ pub fn list_devices() -> io::Result<()> {
     Ok(())
 }
 
+#[cfg(windows)]
+pub fn devices_json() -> io::Result<serde_json::Value> {
+    use cpal::traits::{DeviceTrait, HostTrait};
+    let mut devices = Vec::new();
+    for device in cpal::default_host()
+        .output_devices()
+        .map_err(io::Error::other)?
+    {
+        devices.push(device.name().map_err(io::Error::other)?);
+    }
+    Ok(serde_json::json!(devices))
+}
+
+#[cfg(not(windows))]
+pub fn devices_json() -> io::Result<serde_json::Value> {
+    Err(io::Error::other("Live endpoints require Windows"))
+}
+
 #[cfg(not(windows))]
 pub fn list_devices() -> io::Result<()> {
     Err(io::Error::other("Live endpoints require Windows"))

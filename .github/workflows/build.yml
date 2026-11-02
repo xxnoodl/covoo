@@ -34,6 +34,10 @@ jobs:
         if: runner.os == 'Windows'
         shell: pwsh
         run: ./scripts/test-dashboard.ps1
+      - name: Desktop channel check
+        if: runner.os == 'Windows'
+        shell: powershell
+        run: ./scripts/test-desktop.ps1
       - run: cargo run -p windows-receiver --locked
       - run: cargo run --release --locked -p audio-transport --example crypto_bench
       - name: Package Windows receiver
@@ -43,6 +47,8 @@ jobs:
           New-Item -ItemType Directory -Force build/windows | Out-Null
           Copy-Item target/release/windows-receiver.exe build/windows/covoo-receiver.exe
           Copy-Item scripts/start-receiver.cmd build/windows/start-receiver.cmd
+          Copy-Item scripts/start-desktop.cmd,scripts/desktop.ps1,scripts/desktop-common.ps1 build/windows/
+          Copy-Item docs/testing/desktop-setup.md build/windows/Desktop-setup.md
           Copy-Item scripts/start-daw.cmd build/windows/start-daw.cmd
           Copy-Item scripts/start-daw-fast.cmd build/windows/start-daw-fast.cmd
           Copy-Item scripts/start-daw-lowlatency.cmd build/windows/start-daw-lowlatency.cmd

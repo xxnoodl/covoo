@@ -15,11 +15,18 @@ final class CaptureModel: ObservableObject {
     @Published var monitorGain: Float = 0.2
     @Published var monitorMuted = false
     private var streamer: AudioStreamer?
+    private let pairingStore = PairingStore()
     private let service = CaptureService()
     private var observers: [NSObjectProtocol] = []
     private var backgroundFinalizationTask: UIBackgroundTaskIdentifier = .invalid
 
     init() {
+        do {
+            if let saved = try pairingStore.load() {
+                pairingLink = saved
+                streamState.status = "Saved pairing loaded. Tap Connect. If the receiver address changed or pairing was revoked, scan again."
+            }
+        } catch { streamState.status = error.localizedDescription }
         observe(AVAudioSession.interruptionNotification, message: "Audio interrupted. Start again when ready.")
         observe(AVAudioSession.mediaServicesWereLostNotification, message: "Audio service lost. Start again when ready.")
         observe(AVAudioSession.mediaServicesWereResetNotification, message: "Audio service reset. Start again when ready.")
@@ -155,6 +162,24 @@ final class CaptureModel: ObservableObject {
         streamer?.disconnect()
         streamer = nil
         streamState = StreamState()
+    }
+
+    func rememberReceiver() {
+        guard !state.recording, !requesting else { return }
+        do {
+            try pairingStore.save(pairingLink)
+            streamState.status = "Pairing remembered on this phone. Connect still checks the pinned certificate."
+        } catch { streamState.status = error.localizedDescription }
+    }
+
+    func forgetReceiver() {
+        guard !state.recording, !requesting else { return }
+        do {
+            try pairingStore.forget()
+            disconnectReceiver()
+            pairingLink = ""
+            streamState.status = "Pairing forgotten on this phone. To revoke all phones, use Revoke saved pairing on Windows."
+        } catch { streamState.status = error.localizedDescription }
     }
 
     deinit {

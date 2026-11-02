@@ -1,34 +1,31 @@
 # Next session
 
-User agreed next work: simplify Windows setup with desktop controls, integrated
-pairing/status, then saved pairing. Continue implementation; no new recording or
-hardware test is required to start this work.
+Windows setup implementation is complete for desktop controls, integrated
+pairing/status and saved pairing. Local Windows automation passed; iOS Keychain
+build/simulator checks and physical acceptance remain pending. No new recording
+is needed to continue independent work.
 
 ## Read first
 
-- `AGENTS.md` and `todo.md`.
-- `docs/milestones/dashboard-update.md`, `local-monitoring-update.md`,
-  `recovery-update.md`, and M3 through M6.
-- Receiver `main.rs`, `server.rs`, `dashboard.rs`, `live.rs`; existing launchers.
-- iOS `CaptureModel.swift`, `AudioStreamer.swift` and the security/protocol docs
-  before changing pairing.
+- `AGENTS.md`, `todo.md`, `docs/milestones/desktop-setup-update.md`.
+- `docs/decisions/0009-desktop-pairing.md` and `docs/testing/desktop-setup.md`.
+- Desktop scripts, receiver `main.rs`, `server.rs`, `dashboard.rs`, `live.rs`.
+- iOS `PairingStore.swift`, `CaptureModel.swift`, `AudioStreamer.swift` and
+  the security/protocol docs before changing pairing trust.
 
-## Next implementation
+## Next work
 
-1. Choose a lightweight Windows interface with a short architecture decision.
-   Provide connection/interface and explicit audio-output selection, start/stop,
-   visible errors, pairing QR and receiver health. Reuse the existing engine.
-2. Keep audio independent of UI responsiveness. The current dashboard is a local
-   auto-refreshing file, not a desktop control API. Do not turn it into an
-   unauthenticated network control service. Never silently pick speakers or a
-   different endpoint after failure.
-3. Design saved pairing's trust lifecycle before adding persistence. Currently
-   `Server::bind` creates a fresh TLS identity and token on every receiver launch.
-   Saving the current QR link alone does not provide durable pairing. Preserve
-   certificate pinning, protect stored credentials, and define forget/revoke and
-   stale-pairing behavior. App preferences and pairing secrets are different data.
-4. Keep independent work moving, run automated checks, and put remaining manual
-   tests in `todo.md`. Do not mark acceptance passed based on implementation alone.
+1. Run/inspect macOS CI for the new Keychain test and unsigned iOS builds when
+   available. No local Mac exists. Do not infer these passed from Rust checks.
+2. Continue independent setup/installation work and remaining metrics. The desktop
+   exposes the existing legacy 40 ms route; experimental presets remain in CLI.
+   No automatic drivers, firewall or execution-policy changes.
+3. Keep paired identity fail-closed, certificate pinning and fresh take keys.
+   Stop preserves desktop identity; Revoke requires a stopped receiver and rotates
+   certificate/token on next Start. Phone Forget deletes only its local copy.
+   Address changes need rescanning. Never trust discovery to replace a pin.
+4. Batch signed-device pairing/restart/revoke, real take close/stop, interface and
+   endpoint failure tests in todo.md. M3-M6 acceptance remains open.
 
 ## Current state
 
@@ -52,13 +49,18 @@ hardware test is required to start this work.
 Application revision `eb41a13` passed Windows, Linux and macOS CI, including native
 ASan/UBSan/callback tests, encrypted Swift/Rust interoperability, unsigned device
 and simulator builds, and ten iOS simulator tests. Evidence is in the monitoring
-report. Local checks passed 35 workspace Rust tests and ten Python tests.
+report. This working revision locally passed 36 workspace Rust tests, ten
+Python tests, Windows native queue/gate checks, desktop pipe/DPAPI tests and the
+actual Windows Forms loopback smoke. See the desktop setup report for limits;
+no CI run for this revision is claimed.
 
 Run `scripts/verify.ps1`, locked debug build, and relevant feature checks.
 Local Rust is under `.tools/cargo/bin/cargo.exe`; use repository `.tools/cargo`
 as CARGO_HOME and `.tools/rustup` as RUSTUP_HOME when invoking it directly.
 Native checks: `scripts/test-native-windows.ps1`; browser checks:
-`scripts/test-dashboard.ps1`. macOS CI supplies Swift/Xcode and POSIX sanitizer
+`scripts/test-dashboard.ps1`. Desktop checks: `scripts/test-desktop.ps1` and
+`powershell -STA -File scripts/desktop.ps1 -ReceiverPath target/release/windows-receiver.exe -SmokeTest`.
+macOS CI supplies Swift/Xcode and POSIX sanitizer
 checks. There is no local Mac. User has a regular Apple account and previously
 used AltServer; do not assume signing credentials or physical debugging access.
 

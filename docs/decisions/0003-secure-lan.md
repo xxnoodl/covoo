@@ -10,6 +10,8 @@ pairing QR/link pins its full SHA-256 DER fingerprint and carries a random
 identity. No certificate, root CA, driver or firewall rule is installed.
 Pairing remains valid for that receiver process only; restarting revokes it.
 The phone stores the link only in memory in M2. Pair again after app restart.
+The later desktop opt-in persistence and phone Remember/Forget lifecycle are
+specified in [ADR 0009](0009-desktop-pairing.md); ordinary CLI launches stay ephemeral.
 
 Each Start over authenticated TLS issues a fresh independent 256-bit UDP key
 and random stream ID. Nonces are four zero bytes followed by a monotonically

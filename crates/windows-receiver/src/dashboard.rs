@@ -95,7 +95,22 @@ fn publish(directory: &std::path::Path, snapshot: &Snapshot) -> io::Result<()> {
     let temporary = directory.join("dashboard.pending");
     fs::write(&temporary, render(snapshot, updated_ms))?;
     // Same-directory replacement prevents readers seeing partially written HTML.
-    fs::rename(temporary, directory.join("dashboard.html"))
+    fs::rename(temporary, directory.join("dashboard.html"))?;
+    // Separate read-only desktop snapshot; contains no pairing credentials.
+    let status = serde_json::json!({
+        "updated_ms": updated_ms,
+        "stopped": snapshot.stopped,
+        "state": snapshot.state,
+        "rows": snapshot.rows,
+    });
+    fs::write(
+        directory.join("status.pending"),
+        serde_json::to_vec(&status)?,
+    )?;
+    fs::rename(
+        directory.join("status.pending"),
+        directory.join("status.json"),
+    )
 }
 
 #[cfg(test)]

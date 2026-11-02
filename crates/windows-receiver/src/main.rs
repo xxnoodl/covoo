@@ -14,6 +14,10 @@ fn main() {
 }
 fn run() -> io::Result<()> {
     let args: Vec<_> = std::env::args().skip(1).collect();
+    if args.iter().any(|a| a == "--audio-devices-json") {
+        println!("{}", windows_receiver::live::devices_json()?);
+        return Ok(());
+    }
     if args.iter().any(|a| a == "--list-audio") {
         return windows_receiver::live::list_devices();
     }
@@ -70,7 +74,39 @@ fn run() -> io::Result<()> {
     if seconds == 0 || seconds > 86400 {
         return Err(io::Error::other("--seconds must be 1..86400"));
     }
+    // Only the desktop's private redirected pipe may receive raw credentials.
+    let desktop = args.iter().any(|a| a == "--desktop-session");
+    let stored = if desktop {
+        use std::io::{IsTerminal, Write};
+        if io::stdin().is_terminal() || io::stdout().is_terminal() {
+            return Err(io::Error::other(
+                "Desktop session requires private redirected pipes",
+            ));
+        }
+        let line = desktop_line()?;
+        let stored = if line.trim() == "null" {
+            audio_transport::identity::StoredPairing::generate()?
+        } else {
+            serde_json::from_str::<audio_transport::identity::StoredPairing>(&line)
+                .map_err(|_| io::Error::other("Invalid saved pairing record"))?
+        };
+        stored.identity()?;
+        println!("COVOO_PAIRING {}", serde_json::to_string(&stored)?);
+        io::stdout().flush()?;
+        if desktop_line()?.trim() != "START" {
+            return Err(io::Error::other(
+                "Desktop did not confirm protected pairing storage",
+            ));
+        }
+        Some(stored)
+    } else {
+        None
+    };
     let mut server = Server::bind(SocketAddr::from((host, port)), output)?;
+    if let Some(stored) = stored {
+        server.identity = stored.identity()?;
+        server.token = stored.token();
+    }
     if let Some(device) = value(&args, "--audio-device")? {
         let backend = match value(&args, "--audio-backend")?.unwrap_or("legacy") {
             "legacy" => windows_receiver::live::AudioBackend::Legacy,
@@ -150,9 +186,27 @@ fn run() -> io::Result<()> {
     println!(
         "Allow this receiver on private networks if Windows asks. No firewall settings are changed automatically."
     );
+    if desktop {
+        let stop = server.stop_flag();
+        std::thread::spawn(move || {
+            // EOF (including a closed UI) also requests graceful shutdown.
+            let _ = desktop_line();
+            stop.store(true, std::sync::atomic::Ordering::Relaxed);
+        });
+    }
     let result = server.run(Duration::from_secs(seconds));
     if let Some(mdns) = mdns {
         let _ = mdns.shutdown();
     }
     result
+}
+
+fn desktop_line() -> io::Result<String> {
+    use std::io::{BufRead, Read};
+    let mut line = String::new();
+    io::stdin().lock().take(65537).read_line(&mut line)?;
+    if line.len() > 65536 || !line.ends_with('\n') {
+        return Err(io::Error::other("Invalid desktop pipe record"));
+    }
+    Ok(line)
 }

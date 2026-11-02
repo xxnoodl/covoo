@@ -88,10 +88,16 @@ fn packet(id: u64, sequence: u32, position: u64, rate: u32) -> Vec<u8> {
 
 pub fn smoke() -> io::Result<()> {
     let directory = std::env::temp_dir().join(format!("covoo-test-{:016x}", rand::random::<u64>()));
-    let server = Server::bind(
+    let mut server = Server::bind(
         SocketAddr::from((Ipv4Addr::LOCALHOST, 0)),
         directory.clone(),
     )?;
+    // Exercise the same serialized identity restoration used by the desktop.
+    let stored = audio_transport::identity::StoredPairing::generate()?;
+    let restored: audio_transport::identity::StoredPairing =
+        serde_json::from_slice(&serde_json::to_vec(&stored)?)?;
+    server.identity = restored.identity()?;
+    server.token = restored.token();
     let address = server.address;
     let certificate = server.identity.certificate.clone();
     let mut bad_pin = client(address, &certificate, false)?;
@@ -303,6 +309,11 @@ pub fn smoke() -> io::Result<()> {
     assert!(dashboard.contains("Receiver stopped"));
     assert!(!dashboard.contains(&hex(&token)));
     std::fs::remove_file(directory.join("dashboard.html"))?;
+    let status = std::fs::read_to_string(directory.join("status.json"))?;
+    assert!(!status.contains(&hex(&token)));
+    let status: serde_json::Value = serde_json::from_str(&status)?;
+    assert_eq!(status["stopped"], true);
+    std::fs::remove_file(directory.join("status.json"))?;
     std::fs::remove_dir(directory)?;
     println!(
         "Secure loopback passed: pinned TLS, token rejection, encrypted/reordered PCM, tamper/replay rejection, restart and exact WAV samples"

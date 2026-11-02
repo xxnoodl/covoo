@@ -43,6 +43,15 @@ acceptance gates still apply before dependent work or milestone sign-off.
 
 ## Required acceptance tests, scheduled later
 
+- [ ] Desktop setup and saved pairing: signed updated iOS app, explicit interface/
+  output selection, real take Start/Stop and window close, missing/removed endpoint
+  with no fallback, stale/error status, USB/interface/address changes, Windows/app
+  restart with remembered pairing, phone Forget and Windows Revoke rejecting old
+  links. Check Keychain locked-device behavior and corrupt DPAPI failure. See
+  docs/testing/desktop-setup.md and docs/milestones/desktop-setup-update.md.
+- [ ] New iOS Keychain lifecycle simulator test and unsigned builds in macOS CI.
+  Added coverage is not a claimed pass; no local Xcode is available.
+
 - [ ] Local phone monitoring: signed build, default-off capture regression,
   wired-headphone gain/mute and source continuity, repeated takes, rejected routes,
   headphone removal/feedback, interruption/background gate behavior and physical
@@ -95,12 +104,15 @@ acceptance gates still apply before dependent work or milestone sign-off.
 ## Implementation still required
 
 - [ ] Native WaveRT endpoint, restricted feeder, build-only WDK CI and installer rollback.
-- [ ] Native desktop controls and remaining metrics. The local receiver dashboard
-  is implemented; browser/physical checks remain pending above.
+- [ ] Remaining desktop metrics and consumer installation. Desktop controls,
+  integrated pairing/status and Windows identity persistence are implemented and
+  locally automated-verified; signed phone/physical acceptance remains above.
 - [ ] Local iPhone monitoring acceptance. Implementation and automated coverage
   are tracked in docs/milestones/local-monitoring-update.md; hardware checks above.
 - [ ] Deliberate background recording support; current policy stops on background/lock.
-- [ ] Persisted pairing and consumer installation workflow.
+- [ ] Saved pairing acceptance and consumer installation workflow. Windows DPAPI
+  persistence is locally automated-verified. Phone Keychain persistence is
+  implemented; simulator/build and signed-device verification remain pending.
 
 See [M4](docs/milestones/M4.md), [M5](docs/milestones/M5.md) and
 [M6](docs/milestones/M6.md) for implemented work and remaining acceptance limits.
