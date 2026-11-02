@@ -44,7 +44,7 @@ does not mistake `.monitor.json` sidecars for extra recording sessions.
 
 ## Automated verification
 
-Local formatting, Clippy, 37 workspace tests and locked debug/release builds
+Local formatting, Clippy, 38 Windows workspace tests and locked debug/release builds
 passed. The fanout regression fills/disconnects output queues and checks intact
 PCM reaches archive/other output. Encrypted loopback records and acknowledges
 multiple takes with a deliberately unavailable monitor, verifies PCM and the
@@ -54,8 +54,27 @@ PowerShell latency checks passed shared-file reads, shutdown/partial/nonfinite
 handling, locale-independent parsing, unknown values, filtered log content and
 independent route argument generation. Packaged UI/install/update/rollback/
 uninstall checks passed with monitoring Off and file-only loopback. Ten Python
-tests and the Windows native queue/gate subset passed before the sidecar listing
-regression; final Python/UI checks and CI results are recorded after completion.
+tests passed including the monitor-sidecar listing regression, as did the Windows
+native queue/gate subset, UTF-8-BOM desktop channel test and PowerShell syntax
+checks. CI results are recorded after completion.
+
+Initial revision d85e6aa passed Linux but Windows CI exited with native access
+violation 0xc0000005 during concurrent endpoint/loopback tests. Review of pinned
+CPAL 0.16 found a process-wide cached IMMDeviceEnumerator initialized through
+thread-local STA setup. Temporary/per-take callers can outlive the originating
+apartment. This is the suspected lifetime mechanism; no native crash stack was
+available to prove the exact failing instruction.
+
+Legacy setup now creates the cached enumerator in a process-lifetime MTA owner
+and enters the same MTA for each querying/output thread, retaining its guard
+through stream destruction. The guard cannot move across threads. One parked
+owner thread persists until process exit; no work is added to callbacks and no
+dependency or application unsafe code changes. The new Windows regression queries
+from temporary threads repeatedly, accepting graceful device/service errors but
+never a native process crash. Corrected CI results are recorded after completion.
+This does not claim to fix the reported physical headphone pitch symptom.
+
+Reference: [Microsoft COM apartments](https://learn.microsoft.com/en-us/windows/win32/com/processes--threads--and-apartments).
 
 ## Physical acceptance
 

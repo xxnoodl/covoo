@@ -14,6 +14,57 @@ use std::{
     time::Duration,
 };
 
+/// CPAL 0.16 caches its Windows enumerator process-wide. Create it in an MTA
+/// that outlives per-take workers, and enter that MTA on every calling thread.
+/// All calls are setup/teardown work, never audio callbacks.
+#[cfg(windows)]
+struct LegacyApartment(std::marker::PhantomData<std::rc::Rc<()>>);
+#[cfg(windows)]
+impl LegacyApartment {
+    fn new() -> io::Result<Self> {
+        use std::sync::OnceLock;
+        static OWNER: OnceLock<Result<(), String>> = OnceLock::new();
+        OWNER
+            .get_or_init(|| {
+                let (ready, wait) = mpsc::sync_channel(1);
+                thread::Builder::new()
+                    .name("covoo-legacy-apartment".into())
+                    .spawn(move || {
+                        use cpal::traits::HostTrait;
+                        let initialized = wasapi::initialize_mta().ok().map_err(|e| e.to_string());
+                        if let Err(error) = initialized {
+                            let _ = ready.send(Err(error));
+                            return;
+                        }
+                        let _lifetime = LegacyApartment(std::marker::PhantomData);
+                        let result = cpal::default_host()
+                            .output_devices()
+                            .map(|_| ())
+                            .map_err(|e| e.to_string());
+                        let _ = ready.send(result);
+                        // Keep the cached enumerator's originating apartment alive until
+                        // process exit, even after every take or enumeration call ends.
+                        loop {
+                            thread::park();
+                        }
+                    })
+                    .map_err(|e| e.to_string())?;
+                wait.recv()
+                    .map_err(|_| "Legacy audio apartment initialization failed".to_string())?
+            })
+            .as_ref()
+            .map_err(|error| io::Error::other(error.clone()))?;
+        wasapi::initialize_mta().ok().map_err(io::Error::other)?;
+        Ok(Self(std::marker::PhantomData))
+    }
+}
+#[cfg(windows)]
+impl Drop for LegacyApartment {
+    fn drop(&mut self) {
+        wasapi::deinitialize();
+    }
+}
+
 #[derive(Clone)]
 pub struct RouteOptions {
     pub device: String,
@@ -41,6 +92,8 @@ pub fn probe_device(_: &str) -> io::Result<serde_json::Value> {
 struct OutputHandle {
     legacy: Option<cpal::Stream>,
     native: Option<crate::native_output::NativeStream>,
+    // Drop the stream first, then leave its calling thread's apartment.
+    _legacy_apartment: Option<LegacyApartment>,
 }
 #[cfg(windows)]
 impl OutputHandle {
@@ -78,17 +131,20 @@ fn open(
             OutputHandle {
                 legacy: None,
                 native: Some(stream),
+                _legacy_apartment: None,
             },
             producer,
             stats,
             report,
         ))
     } else {
+        let apartment = LegacyApartment::new()?;
         let (stream, producer, stats, report) = open_legacy(options, rate)?;
         Ok((
             OutputHandle {
                 legacy: Some(stream),
                 native: None,
+                _legacy_apartment: Some(apartment),
             },
             producer,
             stats,
@@ -136,6 +192,7 @@ impl LiveSession {
 
 #[cfg(windows)]
 pub fn list_devices() -> io::Result<()> {
+    let _apartment = LegacyApartment::new()?;
     use cpal::traits::{DeviceTrait, HostTrait};
     for device in cpal::default_host()
         .output_devices()
@@ -157,6 +214,7 @@ pub fn list_devices() -> io::Result<()> {
 
 #[cfg(windows)]
 pub fn devices_json() -> io::Result<serde_json::Value> {
+    let _apartment = LegacyApartment::new()?;
     use cpal::traits::{DeviceTrait, HostTrait};
     let mut devices = Vec::new();
     for device in cpal::default_host()
@@ -188,6 +246,7 @@ fn open_legacy(
     Arc<OutputStats>,
     serde_json::Value,
 )> {
+    let _apartment = LegacyApartment::new()?;
     use cpal::traits::{DeviceTrait, HostTrait, StreamTrait};
     let mut matches = cpal::default_host()
         .output_devices()
@@ -521,6 +580,20 @@ fn run(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[cfg(windows)]
+    #[test]
+    fn legacy_enumeration_survives_temporary_calling_threads() {
+        for _ in 0..4 {
+            // No render stream. An unavailable service may return an error,
+            // but enumerator ownership must never cause a native process crash.
+            thread::spawn(|| {
+                let _ = devices_json();
+            })
+            .join()
+            .unwrap();
+        }
+    }
     #[test]
     fn missing_endpoint_returns_an_error_without_default_fallback() {
         let result = LiveSession::start(

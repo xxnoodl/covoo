@@ -49,6 +49,8 @@ acceptance gates still apply before dependent work or milestone sign-off.
   repeated takes and matched phone/PC/DAW files. Do not infer complete PC audio
   or Live-effect latency from a working dry monitor. Physical timing and headphone
   pitch/stability checks remain open. See docs/testing/ableton-monitoring.md.
+  Include repeated legacy output startup after the cached-enumerator MTA lifetime
+  correction; CI endpoint enumeration is not physical device acceptance.
 
 - [x] Windows install and uninstall: user reports both work on their setup while
   testing the supplied 312b687 package. Account privilege, retained data and the
