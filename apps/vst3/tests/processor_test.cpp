@@ -13,7 +13,7 @@ static void require(bool value, const char* message) {
 }
 
 static void exercise(int32 sampleSize, double rate) {
-    auto* processor = new covoo::Processor;
+    auto* processor = new covoo::Processor(false);
     require(processor->initialize(nullptr) == kResultOk, "initialize failed");
     require(processor->getBusCount(kAudio, kInput) == 0, "hardware input bus exposed");
     require(processor->getBusCount(kAudio, kOutput) == 1, "output bus missing");

@@ -14,6 +14,17 @@ fn main() {
 }
 fn run() -> io::Result<()> {
     let args: Vec<_> = std::env::args().skip(1).collect();
+    if args.iter().any(|a| a == "--list-plugin-instances") {
+        println!("{}", windows_receiver::plugin_bridge::list_instances()?);
+        return Ok(());
+    }
+    if let Some(instance) = value(&args, "--probe-plugin")? {
+        println!("{}", windows_receiver::plugin_bridge::probe(instance)?);
+        return Ok(());
+    }
+    if let Some(instance) = value(&args, "--self-test-plugin")? {
+        return windows_receiver::synthetic::smoke_plugin(instance);
+    }
     if args.iter().any(|a| a == "--audio-devices-json") {
         println!("{}", windows_receiver::live::devices_json()?);
         return Ok(());
@@ -35,6 +46,9 @@ fn run() -> io::Result<()> {
             "Usage: windows-receiver --serve [--host LAN_IP] [--port 43110] [--output recordings] [--seconds 3600]"
         );
         println!("Or: windows-receiver --self-test");
+        println!(
+            "Experimental VST3: --list-plugin-instances; add --plugin-instance ID to --serve."
+        );
         println!("Probe: --probe-audio EXACT_NAME. Experimental: --audio-backend low-period.");
         println!(
             "Optional dry monitor: --monitor-device EXACT_NAME [--monitor-buffer-ms 40] [--monitor-backend legacy|low-period]."
@@ -106,6 +120,14 @@ fn run() -> io::Result<()> {
         None
     };
     let mut server = Server::bind(SocketAddr::from((host, port)), output)?;
+    if let Some(instance) = value(&args, "--plugin-instance")? {
+        if !cfg!(windows) || !windows_receiver::plugin_bridge::valid_instance(instance) {
+            return Err(io::Error::other(
+                "Plug-in instance requires Windows and an exact listed ID",
+            ));
+        }
+        server = server.with_plugin(instance.into());
+    }
     if let Some(stored) = stored {
         server.identity = stored.identity()?;
         server.token = stored.token();

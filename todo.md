@@ -43,13 +43,15 @@ acceptance gates still apply before dependent work or milestone sign-off.
 
 ## Required acceptance tests, scheduled later
 
-- [ ] VST3 source, after the receiver bridge is implemented: Live scan/load/remove,
+- [ ] VST3 source/bridge: Live scan/load/remove,
   instrument processing without MIDI notes, explicit receiver/instance selection,
   effects and recording post-effect audio, 32/64-bit/rate/block changes, multiple
   instances, offline bounce silence, disconnect/stop/restart with no old-voice
   replay, output-device removal and common-reference latency/drift comparison.
-  The offline source foundation is automated-tested only; it has no receiver
-  connection and is not a user-test bundle. See docs/milestones/vst3-source-update.md.
+  The source and authenticated bridge are synthetic-tested only and not installed
+  into Live. Include standard-user and separate-user/remote pipe denial, host
+  deactivate/reactivate identity changes, plug-in crash/restart and a long drift
+  run. See docs/milestones/vst3-bridge-update.md. No measured latency pass yet.
 
 - [ ] Ableton latency update: simultaneous cable recording and explicitly selected
   wired PC dry monitor, monitor Off with Live In/Auto for effects, 40/16/8 ms
@@ -154,10 +156,12 @@ acceptance gates still apply before dependent work or milestone sign-off.
 - [x] Offline VST3 source foundation: local Covoo validator 47/47 and synthetic
   core/actual-processor checks passed. No receiver bridge or physical output yet.
   See docs/milestones/vst3-source-update.md.
-- [ ] VST3 authenticated receiver bridge, explicit instance selection, host feedback,
-  worker-side clock adaptation and receiver interoperability checks. A suitable
-  existing playback driver and physical Live validation will still be needed.
-  Custom ASIO remains outside authorization. See ADR 0011.
+- [x] VST3 authenticated receiver bridge, explicit CLI instance selection/probing,
+  host feedback, worker-side clock adaptation and local receiver interoperability
+  checks implemented. See docs/milestones/vst3-bridge-update.md for verified scope.
+- [ ] VST3 desktop instance selection/status and user-test bundle/Live guide.
+  A suitable existing playback driver and physical Live validation remain needed.
+  Custom ASIO stays outside authorization. See ADR 0011.
 - [ ] Recordings access, deferred by user: Open recordings currently opens the
   parent containing opaque per-run folders. Open the current session's recording
   folder directly. Discuss playback of the current recording or a side-panel

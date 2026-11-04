@@ -7,5 +7,11 @@ audio_thread_priority 0.38.0: MPL-2.0. Unmodified library source:
 https://crates.io/crates/audio_thread_priority/0.38.0
 Repository: https://github.com/mozilla/audio_thread_priority
 
+interprocess 2.4.5: 0BSD (chosen from 0BSD OR Apache-2.0). Unmodified source:
+https://crates.io/crates/interprocess/2.4.5
+Repository: https://github.com/kotauskas/interprocess
+Used only for the explicit local VST bridge on Windows. ring 0.17.14, already
+present through rustls, is also a direct Windows dependency for bridge HMAC.
+
 License texts are included here. This lists the new output components, not all
 transitive dependencies or a completed distribution/licensing review.

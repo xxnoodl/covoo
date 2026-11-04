@@ -62,10 +62,15 @@ and actual Ableton-effects monitoring latency remain pending; no settings change
    its actual Covoo bundle passes 47 validator tests and synthetic core/processor
    checks locally and in Windows VS 2022 CI at 6365aa2. Linux ASan/UBSan core
    checks also passed; Windows receiver/iOS jobs are still pending at handoff.
-   It has no receiver bridge and emits silence in a normal host.
-   Read docs/milestones/vst3-source-update.md. Next: authenticated per-user bridge,
-   instance selection, host feedback, worker-side adaptation and interoperability
-   tests. Do not install the silent development bundle as a working receiver.
+   The follow-up now implements an authenticated per-user named-pipe bridge,
+   explicit CLI instance selection/probing, host feedback and worker-side sinc
+   adaptation. Full TLS/UDP-to-processor tests pass locally at 44.1/48/96 kHz host
+   rates, including exact archives, wrong credentials, stalled peer and host
+   pause/offline checks. Read docs/milestones/vst3-bridge-update.md and
+   docs/protocols/vst-bridge.md. Next: desktop instance selection/status and an
+   uninstalled user-test bundle/Live guide. The current bundle is development-only;
+   Live and physical latency acceptance remain deferred. A fresh plug-in
+   activation creates a new instance ID; no automatic fallback is allowed.
 5. User-confirmed: Windows install/uninstall, Stop/window close, receiver Stop/
    Start without rescanning, repaired Remember/Forget and app relaunch persistence.
    Whole-take PC continuity, revoke, Windows reboot, endpoint removal and M3-M6

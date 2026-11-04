@@ -33,6 +33,8 @@ pub struct Metrics {
     pub live_queue_drops: u64,
     pub monitor_queue_drops: u64,
     pub monitor_start_error: Option<String>,
+    pub plugin_queue_drops: u64,
+    pub plugin_start_error: Option<String>,
     pub jitter_ms: f64,
     pub jitter_observations: u64,
     pub input_peak_linear: f32,
@@ -239,7 +241,7 @@ impl Recorder {
             && metrics.error.is_none()
             && self.frames == metrics.final_end - metrics.final_first
             && (self.frames == 0 || (leading == Some(0) && trailing == Some(0)));
-        let report = json!({ "sample_rate_hz": self.rate, "channels":1, "sample_format":"Float32LE",
+        let mut report = json!({ "sample_rate_hz": self.rate, "channels":1, "sample_format":"Float32LE",
             "packets_written":self.packets, "source_frames_written":self.source_frames,
             "wav_frames":self.frames, "duration_seconds":self.frames as f64 / f64::from(self.rate),
             "missing_packets_detected": self.missing_packets, "packets_not_written":lost,
@@ -263,6 +265,8 @@ impl Recorder {
             "sender_first_position":metrics.final_first, "sender_last_position":metrics.final_end,
             "peak_linear":self.peak, "error":metrics.error,
             "end_to_end_latency":"not measured", "clock_correction":"not active; file receiver only" });
+        report["plugin_queue_drops"] = metrics.plugin_queue_drops.into();
+        report["plugin_start_error"] = metrics.plugin_start_error.clone().into();
         fs::write(&self.report, serde_json::to_vec_pretty(&report)?)?;
         Ok(self.report)
     }

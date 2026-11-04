@@ -1,8 +1,9 @@
 # Ableton effects ingress choices
 
-Status: source foundation in progress after the user said to continue with the
-proposed prototype. [The offline source](../milestones/vst3-source-update.md) is
-implemented; receiver bridging, Live workflow and latency remain unverified.
+Status: [source foundation](../milestones/vst3-source-update.md) and
+[authenticated receiver bridge](../milestones/vst3-bridge-update.md) implemented
+after the user said to continue. Synthetic interoperability passes locally;
+desktop integration, Live workflow and physical latency remain unverified.
 No driver is implemented and no plug-in is installed or loaded into Live.
 
 ## Problem and observed state
@@ -57,10 +58,11 @@ flowchart LR
 Retain the current phone pairing/TLS/UDP protocol and receiver-owned archive.
 Keep a bounded authenticated local bridge separate from the phone transport and
 from the draft kernel CVE1 contract. A proposed named-pipe bridge must restrict
-the current user, reject remote clients and use independent per-receiver/consumer
+the current user, reject remote clients and use independent per-instance bridge
 credentials. Names or source generations are not authorization. Do not save phone
 tokens or bridge secrets in Live projects or plug-in state. Settle pipe API/ACL
-review and owner/forget/restart lifecycle before implementing the IPC.
+review and owner/forget/restart lifecycle before implementing the IPC. That review
+and the implemented contract are now in [the local bridge protocol](../protocols/vst-bridge.md).
 
 The plug-in's background worker handles IPC, validation and a bounded SPSC queue.
 The processor consumes only preallocated PCM and atomics: no network, pipe/file
@@ -94,8 +96,8 @@ host. Then prepare an uninstalled bundle and a separate user-controlled Live
 test guide. Build success is not host, microphone or latency acceptance.
 
 The initial assessment was an implementation choice for review. The subsequent
-source foundation builds a Covoo instrument with synthetic tests, but no receiver
-bridge. The pinned SDK and four required submodules were downloaded into ignored
+source foundation built a Covoo instrument with synthetic tests; the follow-up
+adds an authenticated receiver bridge. The pinned SDK and four required submodules were downloaded into ignored
 .tools/ for a stock ADelay sample build in ignored build/. Its Release x64 build
 and 57 validator tests passed with plug-in linking, GUI support and audio-host
 examples disabled. Nothing was installed or loaded into Live. Reproduction and

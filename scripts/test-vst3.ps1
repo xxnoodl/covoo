@@ -44,8 +44,12 @@ if ($SdkRoot) {
 } else { $configure += '-DCOVOO_VST3_SDK=' }
 Invoke-Checked $cmakePath $configure
 $targets = @('covoo_source_test')
-if ($SdkRoot) { $targets += @('covoo_source', 'covoo_processor_test') }
+if ($SdkRoot) { $targets += @('covoo_source', 'covoo_processor_test', 'covoo_bridge_host') }
+$previousDirectory = $env:COVOO_VST3_LINK_DIRECTORY
+$env:COVOO_VST3_LINK_DIRECTORY = Join-Path $build 'validator-links'
+try {
 Invoke-Checked $cmakePath (@('--build', $build, '--config', 'Release', '--parallel', '4', '--target') + $targets)
 $ctest = Join-Path (Split-Path -Parent $cmakePath) 'ctest.exe'
 Invoke-Checked $ctest @('--test-dir', $build, '-C', 'Release', '--output-on-failure')
-Write-Host 'Offline VST source checks passed. No receiver bridge, Live, audio endpoint or physical latency was tested.'
+} finally { $env:COVOO_VST3_LINK_DIRECTORY = $previousDirectory }
+Write-Host 'VST source checks passed. No Live, physical endpoint or latency measurement. Run test-vst3-bridge.ps1 separately for receiver interoperability.'

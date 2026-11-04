@@ -95,11 +95,21 @@ jobs:
       - name: Build and validate uninstalled source prototype
         shell: powershell
         run: ./scripts/test-vst3.ps1 -SdkRoot .tools/vst3sdk -Generator 'Visual Studio 17 2022'
+      - name: Build receiver for bridge checks
+        shell: powershell
+        run: |
+          rustup toolchain install 1.85.0 --profile minimal
+          cargo +1.85.0 build --workspace --locked
+      - name: Authenticated receiver to VST processor
+        shell: powershell
+        run: ./scripts/test-vst3-bridge.ps1
       - uses: actions/upload-artifact@v4
         if: always()
         with:
           name: covoo-vst3-offline-test-logs
-          path: build/vst3-prototype/Testing/Temporary/
+          path: |
+            build/vst3-prototype/Testing/Temporary/
+            build/vst3-bridge-check-*/*.log
           if-no-files-found: warn
           retention-days: 7
   ios:

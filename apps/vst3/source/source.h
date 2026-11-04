@@ -54,10 +54,11 @@ public:
     void disconnect() noexcept { generation_.store(0, std::memory_order_release); }
 
     // Whole-block rejection; only the feeder worker touches producer state.
-    bool publish(const float* pcm, std::uint32_t count) noexcept {
+    bool publish(const float* pcm, std::uint32_t count, std::uint64_t expectedGate = 0) noexcept {
         const auto gate = gate_.load(std::memory_order_acquire);
         const auto generation = generation_.load(std::memory_order_acquire);
         if (!pcm || count == 0 || count > capacity || !(gate & 1) || generation == 0 ||
+            (expectedGate != 0 && expectedGate != gate) ||
             offline_.load(std::memory_order_acquire) ||
             producerRate_ != rate_.load(std::memory_order_acquire))
             return false;
@@ -142,6 +143,10 @@ public:
             audible = false;
         }
         read_.store(read, std::memory_order_release);
+        if ((gate & 1) && !offline) {
+            clock_.fetch_add(count, std::memory_order_relaxed);
+            block_.store(count, std::memory_order_relaxed);
+        }
         if (enabled)
             silence_.fetch_add(silence, std::memory_order_relaxed);
         return audible;
@@ -150,6 +155,22 @@ public:
     std::uint64_t silenceFrames() const noexcept { return silence_.load(std::memory_order_relaxed); }
     std::uint64_t rejectedFrames() const noexcept { return rejected_.load(std::memory_order_relaxed); }
     std::uint64_t discardedFrames() const noexcept { return discarded_.load(std::memory_order_relaxed); }
+    struct Feedback {
+        double rate;
+        std::uint64_t gate, clock;
+        std::uint32_t queued, block;
+        bool running;
+    };
+    Feedback feedback() const noexcept {
+        const auto gate = gate_.load(std::memory_order_acquire);
+        const auto rate = rate_.load(std::memory_order_acquire);
+        const auto read = read_.load(std::memory_order_acquire);
+        const auto queued = write_.load(std::memory_order_acquire) - read;
+        return {rate, gate, clock_.load(std::memory_order_relaxed),
+            queued > capacity ? capacity : queued, block_.load(std::memory_order_relaxed),
+            (gate & 1) && !offline_.load(std::memory_order_acquire) &&
+                gate == gate_.load(std::memory_order_acquire)};
+    }
 
 private:
     struct Frame { float value; std::uint64_t generation; std::uint64_t gate; };
@@ -162,6 +183,8 @@ private:
     std::atomic<std::uint64_t> generation_{0}, gate_{0};
     std::atomic<double> rate_{0};
     std::atomic<bool> offline_{false};
+    std::atomic<std::uint64_t> clock_{0};
+    std::atomic<std::uint32_t> block_{0};
     std::atomic<std::uint64_t> silence_{0}, rejected_{0}, discarded_{0};
     std::uint64_t nextGeneration_{0}; // producer only
     double producerRate_{0}; // producer only

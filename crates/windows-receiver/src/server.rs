@@ -60,6 +60,7 @@ struct Active {
     live_stats: Option<Arc<crate::playout::OutputStats>>,
     monitor: Option<mpsc::SyncSender<AudioPacket>>,
     monitor_stats: Option<Arc<crate::playout::OutputStats>>,
+    plugin: Option<mpsc::SyncSender<AudioPacket>>,
 }
 
 struct TakeWorkers {
@@ -67,6 +68,7 @@ struct TakeWorkers {
     metrics: Arc<Mutex<Metrics>>,
     output: Option<LiveSession>,
     monitor: Option<LiveSession>,
+    _plugin: Option<crate::plugin_bridge::BridgeSession>,
 }
 
 impl TakeWorkers {
@@ -76,6 +78,9 @@ impl TakeWorkers {
         }
     }
     fn finish(self) {
+        if let Some(plugin) = &self._plugin {
+            plugin.stop();
+        }
         let _ = self.archive.join();
         if let Some(output) = self.output {
             if let Err(error) = output.finish() {
@@ -101,6 +106,7 @@ pub struct Server {
     output: PathBuf,
     route: Option<RouteOptions>,
     monitor_route: Option<RouteOptions>,
+    plugin_instance: Option<String>,
     control_owner: Arc<Mutex<()>>,
 }
 
@@ -126,6 +132,7 @@ impl Server {
             output,
             route: None,
             monitor_route: None,
+            plugin_instance: None,
             control_owner: Arc::new(Mutex::new(())),
         })
     }
@@ -138,6 +145,10 @@ impl Server {
     }
     pub fn with_monitor(mut self, route: RouteOptions) -> Self {
         self.monitor_route = Some(route);
+        self
+    }
+    pub fn with_plugin(mut self, instance: String) -> Self {
+        self.plugin_instance = Some(instance);
         self
     }
     pub fn pairing_link(&self, host: &str) -> String {
@@ -205,6 +216,7 @@ impl Server {
                     let stop = self.stop.clone();
                     let route = self.route.clone();
                     let monitor_route = self.monitor_route.clone();
+                    let plugin_instance = self.plugin_instance.clone();
                     handlers.push(thread::spawn(move || {
                         if let Err(error) = control(
                             socket,
@@ -218,6 +230,7 @@ impl Server {
                             stop,
                             route,
                             monitor_route,
+                            plugin_instance,
                         ) {
                             if !matches!(
                                 error.kind(),
@@ -310,6 +323,14 @@ impl Server {
                     .map_or_else(|| "Off".into(), |r| r.device.clone()),
             ),
             ("Control RTT", "Not collected by receiver".into()),
+            (
+                "Selected VST3 instance",
+                self.plugin_instance.clone().unwrap_or_else(|| "Off".into()),
+            ),
+            (
+                "VST3 live state",
+                "Not polled; see finalized plug-in report".into(),
+            ),
             ("CPU and memory", "Not collected".into()),
             (
                 "Phone microphone and capture buffer",
@@ -365,6 +386,14 @@ impl Server {
                 ),
                 ("Archive queue drops", stats.queue_drops.to_string()),
                 ("Live queue drops", stats.live_queue_drops.to_string()),
+                ("VST3 queue drops", stats.plugin_queue_drops.to_string()),
+                (
+                    "VST3 start error",
+                    stats
+                        .plugin_start_error
+                        .clone()
+                        .unwrap_or_else(|| "None reported".into()),
+                ),
                 (
                     "Dry monitor queue drops",
                     stats.monitor_queue_drops.to_string(),
@@ -493,6 +522,7 @@ fn control(
     stop: Arc<AtomicBool>,
     route: Option<RouteOptions>,
     monitor_route: Option<RouteOptions>,
+    plugin_instance: Option<String>,
 ) -> io::Result<()> {
     let connection = rustls::ServerConnection::new(config).map_err(io::Error::other)?;
     let socket = DeadlineSocket {
@@ -580,9 +610,23 @@ fn control(
                         }
                     });
                     let recorder = Recorder::new(&output, id, sample_rate)?;
+                    let mut plugin_start_error = None;
+                    let plugin = plugin_instance.as_ref().and_then(|instance| {
+                        match crate::plugin_bridge::BridgeSession::start(instance, sample_rate,
+                            output.join(format!("covoo-{id:016x}.plugin.json"))) {
+                            Ok(session) => Some(session),
+                            Err(error) => {
+                                let message = error.to_string();
+                                eprintln!("Plug-in route unavailable: {message}. Archive/other routes continue.");
+                                plugin_start_error = Some(message);
+                                None
+                            }
+                        }
+                    });
                     let (sender, receiver) = mpsc::sync_channel(64);
                     let metrics = Arc::new(Mutex::new(Metrics {
                         monitor_start_error,
+                        plugin_start_error,
                         ..Metrics::default()
                     }));
                     let worker_metrics = metrics.clone();
@@ -602,12 +646,14 @@ fn control(
                         live_stats: live.as_ref().map(|s| s.stats.clone()),
                         monitor: monitor.as_ref().map(|s| s.sender.clone()),
                         monitor_stats: monitor.as_ref().map(|s| s.stats.clone()),
+                        plugin: plugin.as_ref().map(|s| s.sender.clone()),
                     });
                     recording = Some(TakeWorkers {
                         archive: worker,
                         metrics,
                         output: live,
                         monitor,
+                        _plugin: plugin,
                     });
                     write_message(
                         &mut tls,
@@ -784,6 +830,7 @@ fn udp_loop(socket: UdpSocket, registry: Arc<Mutex<Option<Active>>>, stop: Arc<A
             &active.sender,
             active.live.as_ref(),
             active.monitor.as_ref(),
+            active.plugin.as_ref(),
             packet,
             &mut stats,
         );
@@ -795,6 +842,7 @@ fn fan_out(
     archive: &mpsc::SyncSender<AudioPacket>,
     output: Option<&mpsc::SyncSender<AudioPacket>>,
     monitor: Option<&mpsc::SyncSender<AudioPacket>>,
+    plugin: Option<&mpsc::SyncSender<AudioPacket>>,
     packet: AudioPacket,
     stats: &mut Metrics,
 ) {
@@ -803,6 +851,9 @@ fn fan_out(
     }
     if monitor.is_some_and(|sender| sender.try_send(packet.clone()).is_err()) {
         stats.monitor_queue_drops += 1;
+    }
+    if plugin.is_some_and(|sender| sender.try_send(packet.clone()).is_err()) {
+        stats.plugin_queue_drops += 1;
     }
     if archive.try_send(packet).is_err() {
         stats.queue_drops += 1;
@@ -838,32 +889,39 @@ mod tests {
         let (archive, archive_rx) = mpsc::sync_channel(1);
         let (output, output_rx) = mpsc::sync_channel(1);
         let (monitor, monitor_rx) = mpsc::sync_channel(1);
+        let (plugin, plugin_rx) = mpsc::sync_channel(1);
         monitor.try_send(packet.clone()).unwrap();
+        plugin.try_send(packet.clone()).unwrap();
         let mut metrics = Metrics::default();
         fan_out(
             &archive,
             Some(&output),
             Some(&monitor),
+            Some(&plugin),
             packet.clone(),
             &mut metrics,
         );
         assert_eq!(archive_rx.try_recv().unwrap().samples, packet.samples);
         assert_eq!(output_rx.try_recv().unwrap().samples, packet.samples);
         assert_eq!(metrics.monitor_queue_drops, 1);
+        assert_eq!(metrics.plugin_queue_drops, 1);
         assert_eq!(metrics.queue_drops, 0);
         assert_eq!(metrics.live_queue_drops, 0);
         drop(output_rx);
+        drop(plugin_rx);
         monitor_rx.try_recv().unwrap();
         fan_out(
             &archive,
             Some(&output),
             Some(&monitor),
+            Some(&plugin),
             packet.clone(),
             &mut metrics,
         );
         assert_eq!(archive_rx.try_recv().unwrap().samples, packet.samples);
         assert_eq!(monitor_rx.try_recv().unwrap().samples, packet.samples);
         assert_eq!(metrics.live_queue_drops, 1);
+        assert_eq!(metrics.plugin_queue_drops, 2);
         assert_eq!(metrics.queue_drops, 0);
     }
     #[test]
@@ -892,6 +950,7 @@ mod tests {
             live_stats: None,
             monitor: None,
             monitor_stats: None,
+            plugin: None,
         });
         let snapshot = server.status_snapshot(Duration::from_secs(4), false);
         assert_eq!(snapshot.state, "Take active; waiting for audio");

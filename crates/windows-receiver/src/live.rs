@@ -342,7 +342,7 @@ fn run(
 }
 
 #[cfg(any(windows, test))]
-struct OrderedInput {
+pub(crate) struct OrderedInput {
     pending: BTreeMap<u64, AudioPacket>,
     next: u64,
     position: Option<u64>,
@@ -357,7 +357,7 @@ struct OrderedInput {
 }
 #[cfg(any(windows, test))]
 impl OrderedInput {
-    fn new(rate: u32) -> Self {
+    pub(crate) fn new(rate: u32) -> Self {
         Self {
             pending: BTreeMap::new(),
             next: 0,
@@ -372,14 +372,14 @@ impl OrderedInput {
             rate,
         }
     }
-    fn push(&mut self, packet: AudioPacket) {
+    pub(crate) fn push(&mut self, packet: AudioPacket) {
         if packet.counter < self.next {
             self.late += 1;
         } else {
             self.pending.entry(packet.counter).or_insert(packet);
         }
     }
-    fn flush(&mut self, ending: bool, now: Instant, mut sample: impl FnMut(f32)) {
+    pub(crate) fn flush(&mut self, ending: bool, now: Instant, mut sample: impl FnMut(f32)) {
         while let Some((&first, packet)) = self.pending.first_key_value() {
             if first != self.next
                 && !ending

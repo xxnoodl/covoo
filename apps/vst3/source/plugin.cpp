@@ -6,7 +6,15 @@ namespace covoo {
 using namespace Steinberg;
 using namespace Steinberg::Vst;
 
-Processor::Processor() { setControllerClass(controllerId); }
+Processor::Processor(bool enableBridge) : enableBridge_(enableBridge) { setControllerClass(controllerId); }
+Processor::~Processor() = default;
+std::string Processor::bridgeInstance() const {
+#ifdef _WIN32
+    return bridge_ ? bridge_->instance() : "";
+#else
+    return "";
+#endif
+}
 
 tresult PLUGIN_API Processor::initialize(FUnknown* context) {
     const auto result = AudioEffect::initialize(context);
@@ -40,8 +48,18 @@ tresult PLUGIN_API Processor::setupProcessing(ProcessSetup& setup) {
 }
 
 tresult PLUGIN_API Processor::setActive(TBool state) {
-    if (!state)
+    if (!state) {
         source_.setRunning(false);
+#ifdef _WIN32
+        bridge_.reset();
+#endif
+    }
+#ifdef _WIN32
+    if (state && enableBridge_ && !bridge_) {
+        try { bridge_ = std::make_unique<Bridge>(source_); }
+        catch (...) { return kResultFalse; }
+    }
+#endif
     return AudioEffect::setActive(state);
 }
 

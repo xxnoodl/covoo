@@ -34,7 +34,7 @@ foreach ($source in $documents.Keys) {
     $document = [IO.File]::ReadAllText((Join-Path $repo $source)).Replace('(windows-desktop-install.md)', '(Read-me-first.md)')
     [IO.File]::WriteAllText((Join-Path $Destination $documents[$source]), $document)
 }
-$licenseFiles = @('audio_thread_priority-MPL-2.0.txt', 'OUTPUT-COMPONENTS.md', 'wasapi-MIT.txt')
+$licenseFiles = @('audio_thread_priority-MPL-2.0.txt', 'OUTPUT-COMPONENTS.md', 'wasapi-MIT.txt', 'interprocess-0BSD.txt')
 [IO.Directory]::CreateDirectory((Join-Path $Destination 'licenses')) | Out-Null
 foreach ($name in $licenseFiles) { [IO.File]::Copy((Join-Path $repo "licenses/$name"), (Join-Path $Destination "licenses/$name")) }
 $files = @(Get-ChildItem -LiteralPath $Destination -File -Recurse | Sort-Object FullName | ForEach-Object {

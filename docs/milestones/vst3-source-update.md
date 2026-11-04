@@ -1,5 +1,9 @@
 # VST 3 source foundation
 
+Historical foundation report for 6365aa2. The follow-up
+[authenticated receiver bridge](vst3-bridge-update.md) now implements IPC and
+worker-side adaptation; its verification and remaining acceptance are separate.
+
 ## Implemented
 
 The user said to continue after the VST source proposal. The source foundation

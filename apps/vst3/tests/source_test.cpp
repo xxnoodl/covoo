@@ -39,6 +39,8 @@ static void lifecycle() {
     require(source.connect(48000), "reconnect failed");
     require(source.publish(pcm.data(), 512), "reconnected voice rejected");
     { CallbackGuard guard; source.setRunning(false); source.setRunning(true); }
+    require(!source.publish(pcm.data(), 512, source.feedback().gate - 2),
+        "late IPC block survived host lifecycle change");
     require(!render(source, left, right), "stop/start replayed old PCM");
     pcm.fill(0.5f);
     require(source.publish(pcm.data(), 512), "fresh voice rejected");

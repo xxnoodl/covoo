@@ -87,11 +87,25 @@ fn packet(id: u64, sequence: u32, position: u64, rate: u32) -> Vec<u8> {
 }
 
 pub fn smoke() -> io::Result<()> {
+    smoke_inner(None)
+}
+pub fn smoke_plugin(instance: &str) -> io::Result<()> {
+    if !cfg!(windows) || !crate::plugin_bridge::valid_instance(instance) {
+        return Err(io::Error::other(
+            "Plug-in loopback requires a Windows instance ID",
+        ));
+    }
+    smoke_inner(Some(instance))
+}
+fn smoke_inner(plugin: Option<&str>) -> io::Result<()> {
     let directory = std::env::temp_dir().join(format!("covoo-test-{:016x}", rand::random::<u64>()));
     let mut server = Server::bind(
         SocketAddr::from((Ipv4Addr::LOCALHOST, 0)),
         directory.clone(),
     )?;
+    if let Some(instance) = plugin {
+        server = server.with_plugin(instance.into());
+    }
     // Exercise the same serialized identity restoration used by the desktop.
     let stored = audio_transport::identity::StoredPairing::generate()?;
     let restored: audio_transport::identity::StoredPairing =
@@ -276,6 +290,20 @@ pub fn smoke() -> io::Result<()> {
             assert_eq!(report["packets_not_written"], u64::from(stream == 3));
             assert_eq!(report["pcm_continuity_verified"], stream != 3);
             assert!(report["monitor_start_error"].is_string());
+            if plugin.is_some() {
+                assert!(report["plugin_start_error"].is_null(), "{report}");
+                let bridge_path = base.with_extension("plugin.json");
+                let bridge: serde_json::Value =
+                    serde_json::from_slice(&std::fs::read(&bridge_path)?)?;
+                assert!(bridge["error"].is_null(), "{bridge}");
+                assert!(
+                    bridge["sent_host_frames_including_silence"]
+                        .as_u64()
+                        .unwrap()
+                        > 0
+                );
+                std::fs::remove_file(bridge_path)?;
+            }
             assert_eq!(report["monitor_queue_drops"], 0);
             assert_eq!(
                 report["silence_frames_inserted"],
