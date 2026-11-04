@@ -25,6 +25,12 @@ jobs:
       - name: Native queue checks (Linux)
         if: runner.os == 'Linux'
         run: bash scripts/test-native.sh
+      - name: VST source core (Linux sanitizers)
+        if: runner.os == 'Linux'
+        run: |
+          cmake -S apps/vst3 -B build/vst3-core -DCMAKE_BUILD_TYPE=Debug -DCMAKE_CXX_FLAGS="-fsanitize=address,undefined -fno-omit-frame-pointer"
+          cmake --build build/vst3-core --target covoo_source_test --parallel 2
+          ctest --test-dir build/vst3-core --output-on-failure
       - name: Native queue checks (Windows subset)
         if: runner.os == 'Windows'
         shell: pwsh
@@ -73,6 +79,29 @@ jobs:
           name: covoo-windows-x64
           path: build/windows.zip
           if-no-files-found: error
+  vst3:
+    timeout-minutes: 15
+    runs-on: windows-2022
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/checkout@v4
+        with:
+          repository: steinbergmedia/vst3sdk
+          ref: 3cdf9ca5d1f5b1b21e0a86832aa4abe55607bd96
+          path: .tools/vst3sdk
+          persist-credentials: false
+      - name: Initialize pinned SDK modules
+        run: git -C .tools/vst3sdk submodule update --init --depth 1 base cmake pluginterfaces public.sdk
+      - name: Build and validate uninstalled source prototype
+        shell: powershell
+        run: ./scripts/test-vst3.ps1 -SdkRoot .tools/vst3sdk -Generator 'Visual Studio 17 2022'
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: covoo-vst3-offline-test-logs
+          path: build/vst3-prototype/Testing/Temporary/
+          if-no-files-found: warn
+          retention-days: 7
   ios:
     timeout-minutes: 30
     runs-on: macos-15

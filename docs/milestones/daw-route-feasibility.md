@@ -1,5 +1,10 @@
 # Ableton effects route assessment
 
+Follow-up: the user said to continue and the
+[offline VST source foundation](vst3-source-update.md) is now implemented. The
+assessment below records the route choice and initial prerequisite evidence;
+receiver bridging and Live/latency acceptance remain pending.
+
 ## Completed assessment
 
 The November 4 read-only audit finds Live closed and its latest complete active

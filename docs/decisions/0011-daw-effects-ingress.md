@@ -1,8 +1,9 @@
 # Ableton effects ingress choices
 
-Status: feasibility proposal for workflow review. No Covoo plug-in or driver has
-been implemented, installed or selected by this change. The user was asked whether
-a plug-in workflow is acceptable; implementation does not assume an answer.
+Status: source foundation in progress after the user said to continue with the
+proposed prototype. [The offline source](../milestones/vst3-source-update.md) is
+implemented; receiver bridging, Live workflow and latency remain unverified.
+No driver is implemented and no plug-in is installed or loaded into Live.
 
 ## Problem and observed state
 
@@ -92,8 +93,9 @@ starvation, variable blocks/rates and callback constraints in an offline test
 host. Then prepare an uninstalled bundle and a separate user-controlled Live
 test guide. Build success is not host, microphone or latency acceptance.
 
-This is an implementation choice prepared for review, not a functioning Covoo
-plug-in. The pinned SDK and four required submodules were downloaded into ignored
+The initial assessment was an implementation choice for review. The subsequent
+source foundation builds a Covoo instrument with synthetic tests, but no receiver
+bridge. The pinned SDK and four required submodules were downloaded into ignored
 .tools/ for a stock ADelay sample build in ignored build/. Its Release x64 build
 and 57 validator tests passed with plug-in linking, GUI support and audio-host
 examples disabled. Nothing was installed or loaded into Live. Reproduction and

@@ -57,9 +57,13 @@ and actual Ableton-effects monitoring latency remain pending; no settings change
    prerequisites in the checked root. Inventory fixtures pass; inventory is not
    a verified WDK build. A pinned stock VST3 sample builds locally and passes 57
    validator tests without installation or Live. A Covoo source plug-in could
-   bypass the cable/input stage but output latency remains. The user was asked
-   whether that instrument-track/audio-recording workflow is acceptable; no
-   response is recorded yet. Covoo plug-in implementation remains pending.
+   bypass the cable/input stage but output latency remains. The user said to
+   continue with the prototype. apps/vst3 now contains an offline source foundation;
+   its actual Covoo bundle passes 47 validator tests and synthetic core/processor
+   checks locally. It has no receiver bridge and emits silence in a normal host.
+   Read docs/milestones/vst3-source-update.md. Next: authenticated per-user bridge,
+   instance selection, host feedback, worker-side adaptation and interoperability
+   tests. Do not install the silent development bundle as a working receiver.
 5. User-confirmed: Windows install/uninstall, Stop/window close, receiver Stop/
    Start without rescanning, repaired Remember/Forget and app relaunch persistence.
    Whole-take PC continuity, revoke, Windows reboot, endpoint removal and M3-M6

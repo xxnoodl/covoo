@@ -43,6 +43,14 @@ acceptance gates still apply before dependent work or milestone sign-off.
 
 ## Required acceptance tests, scheduled later
 
+- [ ] VST3 source, after the receiver bridge is implemented: Live scan/load/remove,
+  instrument processing without MIDI notes, explicit receiver/instance selection,
+  effects and recording post-effect audio, 32/64-bit/rate/block changes, multiple
+  instances, offline bounce silence, disconnect/stop/restart with no old-voice
+  replay, output-device removal and common-reference latency/drift comparison.
+  The offline source foundation is automated-tested only; it has no receiver
+  connection and is not a user-test bundle. See docs/milestones/vst3-source-update.md.
+
 - [ ] Ableton latency update: simultaneous cable recording and explicitly selected
   wired PC dry monitor, monitor Off with Live In/Auto for effects, 40/16/8 ms
   independent profile comparisons, missing/removed monitor versus main endpoint,
@@ -141,13 +149,15 @@ acceptance gates still apply before dependent work or milestone sign-off.
 
 ## Implementation still required
 
-- [ ] Ableton effects ingress choice: review the receiver plug-in proposal versus
-  a normal native microphone workflow. A plug-in may bypass cable/input stages
-  but still requires a suitable output driver and measured validation. No Covoo
-  plug-in is implemented yet; workflow preference is pending. Custom ASIO remains
-  outside authorization. Stock SDK build/validator checks passed locally; these
-  do not verify Covoo streaming or Live latency. See
-  docs/decisions/0011-daw-effects-ingress.md and docs/milestones/daw-route-feasibility.md.
+- [x] Proceed with the VST3 source prototype: user said to continue after the
+  proposal. This authorizes independent implementation, not Live/latency acceptance.
+- [x] Offline VST3 source foundation: local Covoo validator 47/47 and synthetic
+  core/actual-processor checks passed. No receiver bridge or physical output yet.
+  See docs/milestones/vst3-source-update.md.
+- [ ] VST3 authenticated receiver bridge, explicit instance selection, host feedback,
+  worker-side clock adaptation and receiver interoperability checks. A suitable
+  existing playback driver and physical Live validation will still be needed.
+  Custom ASIO remains outside authorization. See ADR 0011.
 - [ ] Recordings access, deferred by user: Open recordings currently opens the
   parent containing opaque per-run folders. Open the current session's recording
   folder directly. Discuss playback of the current recording or a side-panel
