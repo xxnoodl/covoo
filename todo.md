@@ -111,6 +111,9 @@ acceptance gates still apply before dependent work or milestone sign-off.
 - [ ] Native driver prerequisites: verify WDK/Visual Studio build toolchain and
   build-only CI, then settle feeder identity, driver signing and isolated target.
   See [native capture decision](docs/decisions/0006-native-capture.md).
+- [x] Read-only native prerequisite inventory and fixture tests implemented.
+  November 4 local inspection found VS 2026/user SDK 26100 but no kernel/PortCls
+  artifacts in the checked kit root. This is not a WDK build or acceptance pass.
 
 - [ ] M2 reliability follow-up: continuous stability, disconnect/reconnect and repeated
   takes. Handoff was accepted with limitations; reliability is not fully passed.
@@ -138,6 +141,13 @@ acceptance gates still apply before dependent work or milestone sign-off.
 
 ## Implementation still required
 
+- [ ] Ableton effects ingress choice: review the receiver plug-in proposal versus
+  a normal native microphone workflow. A plug-in may bypass cable/input stages
+  but still requires a suitable output driver and measured validation. No Covoo
+  plug-in is implemented yet; workflow preference is pending. Custom ASIO remains
+  outside authorization. Stock SDK build/validator checks passed locally; these
+  do not verify Covoo streaming or Live latency. See
+  docs/decisions/0011-daw-effects-ingress.md and docs/milestones/daw-route-feasibility.md.
 - [ ] Recordings access, deferred by user: Open recordings currently opens the
   parent containing opaque per-run folders. Open the current session's recording
   folder directly. Discuss playback of the current recording or a side-panel

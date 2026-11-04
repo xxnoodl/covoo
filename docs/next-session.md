@@ -32,8 +32,10 @@ and actual Ableton-effects monitoring latency remain pending; no settings change
 
 ## Next work
 
-1. User prioritized Ableton latency. Read `docs/milestones/ableton-latency-update.md`,
-   `docs/testing/ableton-monitoring.md` and ADR 0010. The November 2 Live log still
+1. User prioritized Ableton effects latency. Read
+   `docs/milestones/daw-route-feasibility.md`, ADR 0011 and
+   `docs/testing/ableton-monitoring.md`. The November 4 read-only audit found Live
+   closed; its latest complete November 3 log state still
    reports FL Studio ASIO 48 kHz/256 samples, 46 ms input/60 ms output. These are
    logged estimates, not measured full-path delay. No settings were changed.
 2. Independent dry PC monitoring now accompanies the main cable route. It defaults
@@ -51,6 +53,13 @@ and actual Ableton-effects monitoring latency remain pending; no settings change
    ASIO implementation, driver installation, aggregation or security changes.
    Do not call receiver buffer targets physical latency or change DAW settings
    automatically. Physical comparisons stay deferred in todo.md.
+   The local VS 2026/SDK 26100 inventory lacks matching kernel/PortCls build
+   prerequisites in the checked root. Inventory fixtures pass; inventory is not
+   a verified WDK build. A pinned stock VST3 sample builds locally and passes 57
+   validator tests without installation or Live. A Covoo source plug-in could
+   bypass the cable/input stage but output latency remains. The user was asked
+   whether that instrument-track/audio-recording workflow is acceptable; no
+   response is recorded yet. Covoo plug-in implementation remains pending.
 5. User-confirmed: Windows install/uninstall, Stop/window close, receiver Stop/
    Start without rescanning, repaired Remember/Forget and app relaunch persistence.
    Whole-take PC continuity, revoke, Windows reboot, endpoint removal and M3-M6

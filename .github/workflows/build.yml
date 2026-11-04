@@ -29,6 +29,19 @@ jobs:
         if: runner.os == 'Windows'
         shell: pwsh
         run: ./scripts/test-native-windows.ps1
+      - name: Native prerequisite inventory (read-only)
+        if: runner.os == 'Windows'
+        shell: powershell
+        run: |
+          ./scripts/test-native-prerequisites.ps1
+          ./scripts/native-prerequisites.ps1 -OutputPath build/native-prerequisites.json
+      - uses: actions/upload-artifact@v4
+        if: runner.os == 'Windows'
+        with:
+          name: covoo-native-prerequisite-inventory
+          path: build/native-prerequisites.json
+          if-no-files-found: error
+          retention-days: 7
       - run: cargo build --workspace --release --locked
       - name: Dashboard browser check
         if: runner.os == 'Windows'

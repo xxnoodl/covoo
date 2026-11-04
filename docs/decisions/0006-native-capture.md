@@ -44,6 +44,12 @@ no endpoint enumeration or latency claim. Wire layout is in
 
 ## Build and distribution
 
+The November 4 [route/prerequisite assessment](../milestones/daw-route-feasibility.md)
+updates this inspection: local VS is 2026, while the checked SDK root is 26100
+without kernel/PortCls artifacts. Current documented pairings include VS 2026
+with 28000 and VS 2022 with 26100. Use the read-only native-prerequisites.ps1
+inventory; its layout candidates never establish a completed kernel build.
+
 Read-only local inspection found Windows SDK include version 10.0.26100.0, but
 no WindowsDriver build files in the checked Windows Kits build directory. This
 does not prove WDK is absent everywhere. Verify compatible Visual Studio, SDK,
