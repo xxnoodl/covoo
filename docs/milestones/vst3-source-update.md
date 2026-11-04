@@ -71,8 +71,14 @@ powershell -NoProfile -File scripts/test-vst3.ps1 -SdkRoot .tools/vst3sdk-feasib
 
 Without -SdkRoot the script builds only the SDK-free core tests. CI adds Linux
 ASan/UBSan core checks and a Windows VS 2022 build using the same pinned SDK,
-validator and actual-processor harness. CI evidence for this increment is pending.
-No driver, ASIO implementation or system audio settings are involved.
+validator and actual-processor harness. No driver, ASIO implementation or system
+audio settings are involved.
+
+Revision 6365aa2 [CI](https://github.com/xxnoodl/covoo/actions/runs/41860818434):
+the Windows VS 2022 VST3 job passed all 47 validator tests and both synthetic
+executables. Linux passed its full job, including the ASan/UBSan core test.
+At this report, the Windows receiver job is still running and iOS is queued;
+neither is claimed passed for this revision. iOS source was not changed.
 
 Local bundle: build/vst3-prototype/VST3/Release/covoo_source.vst3. It is a source
 foundation for development; installing it would not provide phone audio yet.

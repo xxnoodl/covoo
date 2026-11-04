@@ -60,7 +60,9 @@ and actual Ableton-effects monitoring latency remain pending; no settings change
    bypass the cable/input stage but output latency remains. The user said to
    continue with the prototype. apps/vst3 now contains an offline source foundation;
    its actual Covoo bundle passes 47 validator tests and synthetic core/processor
-   checks locally. It has no receiver bridge and emits silence in a normal host.
+   checks locally and in Windows VS 2022 CI at 6365aa2. Linux ASan/UBSan core
+   checks also passed; Windows receiver/iOS jobs are still pending at handoff.
+   It has no receiver bridge and emits silence in a normal host.
    Read docs/milestones/vst3-source-update.md. Next: authenticated per-user bridge,
    instance selection, host feedback, worker-side adaptation and interoperability
    tests. Do not install the silent development bundle as a working receiver.

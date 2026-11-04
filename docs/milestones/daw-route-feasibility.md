@@ -55,8 +55,11 @@ family. No fixture executable is run. CI runs this inventory explicitly as
 read-only and uploads a separate inventory artifact, never as a driver-build pass.
 Local cargo fmt, clippy with warnings denied, all 38 workspace tests, locked debug
 and release builds and CLI smoke checks passed. Inventory fixture tests and the
-strict-mode missing-kit exit code also passed. Cross-platform CI is pending for
-this revision; the previous application revision's CI is separate evidence.
+strict-mode missing-kit exit code also passed. Revision fd814c5's
+[CI](https://github.com/xxnoodl/covoo/actions/runs/41857629896) passed Windows
+(including inventory fixtures/artifact) and Linux. Its queued iOS job was
+cancelled without running, so the overall run did not pass. The previous
+application revision's iOS evidence is separate.
 
 The existing user-mode tools also built upstream VST 3 SDK v3.8.1's stock ADelay
 sample as Release x64. The offline validator passed 57 tests with zero failures.
