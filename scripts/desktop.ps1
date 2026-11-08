@@ -3,6 +3,7 @@ $ErrorActionPreference = 'Stop'
 . (Join-Path $PSScriptRoot 'desktop-common.ps1')
 . (Join-Path $PSScriptRoot 'receiver-profiles.ps1')
 . (Join-Path $PSScriptRoot 'daw-latency.ps1')
+. (Join-Path $PSScriptRoot 'plugin-route.ps1')
 Add-Type -AssemblyName System.Windows.Forms
 Add-Type -AssemblyName System.Drawing
 [Windows.Forms.Application]::EnableVisualStyles()
@@ -36,15 +37,15 @@ $script:processHealth = 'Receiver process CPU: waiting for samples'
 
 $form = New-Object Windows.Forms.Form
 $form.Text = 'covoo'
-$form.Size = New-Object Drawing.Size(1000, 820)
+$form.Size = New-Object Drawing.Size(1000, 900)
 $form.MinimumSize = $form.Size
 $layout = New-Object Windows.Forms.TableLayoutPanel
 $layout.Dock = 'Fill'
 $layout.ColumnCount = 2
-$layout.RowCount = 7
+$layout.RowCount = 8
 $layout.ColumnStyles.Add((New-Object Windows.Forms.ColumnStyle('Percent', 50))) | Out-Null
 $layout.ColumnStyles.Add((New-Object Windows.Forms.ColumnStyle('Percent', 50))) | Out-Null
-foreach ($height in @(32, 40, 68, 64, 42, 340, 160)) {
+foreach ($height in @(32, 40, 68, 64, 42, 340, 160, 72)) {
     $layout.RowStyles.Add((New-Object Windows.Forms.RowStyle('Absolute', $height))) | Out-Null
 }
 $form.Controls.Add($layout)
@@ -149,17 +150,34 @@ $layout.Controls.Add($health, 1, 5)
 $log = New-Object Windows.Forms.TextBox
 $log.Multiline = $true; $log.ReadOnly = $true; $log.ScrollBars = 'Vertical'; $log.Dock = 'Fill'
 $layout.Controls.Add($log, 0, 6); $layout.SetColumnSpan($log, 2)
+$pluginPanel = New-Object Windows.Forms.TableLayoutPanel
+$pluginPanel.Dock = 'Fill'; $pluginPanel.ColumnCount = 1; $pluginPanel.RowCount = 2
+$pluginPanel.Controls.Add((New-Label 'Ableton source (experimental): load the plug-in, refresh, then select its instance. Recreated instances need reselection.'), 0, 0)
+$plugin = New-Object Windows.Forms.ComboBox
+$plugin.DropDownStyle = 'DropDownList'; $plugin.Dock = 'Fill'
+$pluginPanel.Controls.Add($plugin, 0, 1)
+$layout.Controls.Add($pluginPanel, 0, 7); $layout.SetColumnSpan($pluginPanel, 2)
 function Show-Message([string]$Text) {
     if ($log.TextLength -gt 24000) { $log.Text = $log.Text.Substring($log.TextLength - 12000) }
     $log.AppendText($Text + [Environment]::NewLine)
 }
 function Set-Running([bool]$Running) {
-    foreach ($control in @($network, $output, $monitor, $start, $refresh, $revoke)) { $control.Enabled = -not $Running }
+    foreach ($control in @($network, $output, $monitor, $plugin, $start, $refresh, $revoke)) { $control.Enabled = -not $Running }
     $stop.Enabled = $Running
     $profile.Enabled = -not $Running -and $output.SelectedIndex -gt 0
     $monitorProfile.Enabled = -not $Running -and $monitor.SelectedIndex -gt 0
 }
 function Refresh-Choices {
+    $selectedPlugin = [string]$plugin.SelectedItem
+    $plugin.Items.Clear(); $plugin.Items.Add('Off') | Out-Null
+    $plugin.SelectedIndex = if ($selectedPlugin -and $selectedPlugin -ne 'Off') { -1 } else { 0 }
+    try {
+        $instances = Invoke-PluginQuery $ReceiverPath @('--list-plugin-instances')
+        foreach ($entry in $instances.instances) {
+            $plugin.Items.Add([string]$entry.instance) | Out-Null
+        }
+        if ($selectedPlugin -and $selectedPlugin -ne 'Off') { $plugin.SelectedIndex = $plugin.Items.IndexOf($selectedPlugin) }
+    } catch { Show-Message $_.Exception.Message }
     $network.Items.Clear(); $output.Items.Clear(); $monitor.Items.Clear()
     foreach ($adapter in [Net.NetworkInformation.NetworkInterface]::GetAllNetworkInterfaces()) {
         if ($adapter.OperationalStatus -ne 'Up') { continue }
@@ -205,12 +223,18 @@ $start.Add_Click({
     try {
         if ($network.SelectedIndex -lt 0 -or $output.SelectedIndex -lt 0) { throw 'Choose both a connection and an output.' }
         if ($monitor.SelectedIndex -lt 0) { throw 'The saved dry monitor is unavailable. Select an endpoint or Off.' }
+        if ($plugin.SelectedIndex -lt 0) { throw 'Selected plug-in is unavailable. Refresh and select an instance or Off.' }
+        $pluginArguments = @()
+        if ($plugin.SelectedIndex -gt 0) {
+            $pluginArguments = @(Get-PluginRouteArguments $ReceiverPath ([string]$plugin.SelectedItem))
+        }
         $record = Read-Pairing $secretPath
         $script:runDirectory = Join-Path $root ('recordings\' + [guid]::NewGuid().ToString('N'))
         [IO.Directory]::CreateDirectory($script:runDirectory) | Out-Null
         $arguments = @('--serve', '--desktop-session', '--host', ([string]$network.SelectedItem).Split(' ')[0],
             '--output', $script:runDirectory, '--seconds', '86400')
         if ($SmokeTest) { $arguments += @('--port', '0', '--no-discovery') }
+        $arguments += $pluginArguments
         if ($output.SelectedIndex -gt 0) {
             if ($profile.SelectedIndex -lt 0) { throw 'Choose a receiver mode.' }
             $arguments += Get-ReceiverRouteArguments ([string]$output.SelectedItem) $profiles[$profile.SelectedIndex].id
@@ -253,7 +277,7 @@ $revoke.Add_Click({
         # Only pairing pages inside this desktop's owned recordings directory.
         $ownedRecordings = Join-Path $root 'recordings'
         if (Test-Path -LiteralPath $ownedRecordings) {
-            Get-ChildItem -LiteralPath $ownedRecordings -Filter pairing.html -File -Recurse |
+            Get-ChildItem -LiteralPath $ownedRecordings -File -Recurse | Where-Object { $_.Name -in @('pairing.html', 'pairing.bmp') } |
                 ForEach-Object { Remove-Item -LiteralPath $_.FullName }
         }
         $pairing.Navigate('about:blank')
@@ -282,6 +306,8 @@ $timer.Add_Tick({
             $pairing.Navigate('about:blank')
             $page = Join-Path $script:runDirectory 'pairing.html'
             if (Test-Path -LiteralPath $page) { Remove-Item -LiteralPath $page }
+            $bitmap = Join-Path $script:runDirectory 'pairing.bmp'
+            if (Test-Path -LiteralPath $bitmap) { Remove-Item -LiteralPath $bitmap }
             Set-Running $false
             $health.Text = 'Receiver stopped. See the log and saved reports for final results.'
             if ($script:closing) { $form.Close() }
@@ -353,7 +379,7 @@ try {
         })
         $form.Add_Shown({
             if ($network.SelectedIndex -ne -1 -or $output.SelectedIndex -ne -1) { throw 'Output or interface silently selected.' }
-            if ($monitor.SelectedIndex -ne 0) { throw 'Dry monitoring did not default off.' }
+            if ($monitor.SelectedIndex -ne 0 -or $plugin.SelectedIndex -ne 0) { throw 'Optional routes did not default off.' }
             $network.Items.Add('127.0.0.1 | loopback test') | Out-Null
             $network.SelectedIndex = $network.Items.Count - 1
             $output.SelectedIndex = 0

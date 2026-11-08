@@ -30,6 +30,7 @@ public:
     Steinberg::tresult PLUGIN_API process(Steinberg::Vst::ProcessData&) override;
     Steinberg::tresult PLUGIN_API getState(Steinberg::IBStream*) override;
     Steinberg::tresult PLUGIN_API setState(Steinberg::IBStream*) override;
+    Steinberg::tresult PLUGIN_API notify(Steinberg::Vst::IMessage*) override;
 
     // Internal C++ interface, not a host API. The bridge is the sole producer
     // in normal instances; the offline harness disables it before injecting PCM.
@@ -42,6 +43,7 @@ private:
 #endif
     bool enableBridge_;
     bool configured_{false};
+    std::string receiverAddress_, receiverProfile_, receiverError_;
 };
 
 class Controller final : public Steinberg::Vst::EditController {
@@ -50,6 +52,10 @@ public:
         return static_cast<Steinberg::Vst::IEditController*>(new Controller);
     }
     Steinberg::tresult PLUGIN_API setComponentState(Steinberg::IBStream*) override;
+    Steinberg::IPlugView* PLUGIN_API createView(Steinberg::FIDString) override;
+    Steinberg::tresult PLUGIN_API notify(Steinberg::Vst::IMessage*) override;
+    void receiverCommand(const char* command, const std::string& address = "");
+    std::string instance, receiverError, receiverAddress;
 };
 
 } // namespace covoo

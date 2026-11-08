@@ -61,6 +61,7 @@ struct Active {
     monitor: Option<mpsc::SyncSender<AudioPacket>>,
     monitor_stats: Option<Arc<crate::playout::OutputStats>>,
     plugin: Option<mpsc::SyncSender<AudioPacket>>,
+    plugin_status: Option<crate::plugin_bridge::LiveStatus>,
 }
 
 struct TakeWorkers {
@@ -163,6 +164,10 @@ impl Server {
         fs::create_dir_all(&self.output)?;
         let link = self.pairing_link(host);
         let qr = qrcode::QrCode::new(link.as_bytes()).map_err(io::Error::other)?;
+        fs::write(
+            self.output.join("pairing.bmp"),
+            crate::pairing_bitmap::encode(&qr),
+        )?;
         let svg = qr
             .render::<qrcode::render::svg::Color>()
             .min_dimensions(400, 400)
@@ -329,7 +334,11 @@ impl Server {
             ),
             (
                 "VST3 live state",
-                "Not polled; see finalized plug-in report".into(),
+                if self.plugin_instance.is_some() {
+                    "No active feeder; waiting for a take".into()
+                } else {
+                    "Off".into()
+                },
             ),
             ("CPU and memory", "Not collected".into()),
             (
@@ -344,6 +353,17 @@ impl Server {
         };
         if let Some(active) = self.active.lock().unwrap().as_ref() {
             let stats = active.metrics.lock().unwrap().clone();
+            if let Some(row) = rows.iter_mut().find(|row| row.0 == "VST3 live state") {
+                row.1 = active.plugin_status.as_ref().map_or_else(
+                    || {
+                        stats
+                            .plugin_start_error
+                            .clone()
+                            .unwrap_or_else(|| "No active feeder".into())
+                    },
+                    |status| status.snapshot(),
+                );
+            }
             let packet_age = active.last_arrival.map(|last| last.elapsed());
             state = if packet_age.is_some_and(|age| age < Duration::from_secs(2)) {
                 "Receiving audio"
@@ -647,6 +667,7 @@ fn control(
                         monitor: monitor.as_ref().map(|s| s.sender.clone()),
                         monitor_stats: monitor.as_ref().map(|s| s.stats.clone()),
                         plugin: plugin.as_ref().map(|s| s.sender.clone()),
+                        plugin_status: plugin.as_ref().map(|s| s.status.clone()),
                     });
                     recording = Some(TakeWorkers {
                         archive: worker,
@@ -951,6 +972,7 @@ mod tests {
             monitor: None,
             monitor_stats: None,
             plugin: None,
+            plugin_status: None,
         });
         let snapshot = server.status_snapshot(Duration::from_secs(4), false);
         assert_eq!(snapshot.state, "Take active; waiting for audio");

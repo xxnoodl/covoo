@@ -1,5 +1,13 @@
 # Intended consumer workflow
 
+For Ableton, the agreed direction is a self-contained VST workflow: open the
+saved project, connect on the phone and stream. A plug-in-managed hidden receiver
+now implements the Windows foundation; the user opens no separate desktop app.
+First-time QR pairing is in the VST, with in-app scanning on the iPhone. Active
+locked-screen capture is implemented but awaits a new phone build and physical
+acceptance. This is separate from the system-wide microphone/standalone path
+described below. See ../milestones/integrated-workflow-update.md for verified scope.
+
 The current scripts, unsigned build downloads, IP selection and virtual-cable
 configuration are development/validation tools. They aren't the intended
 customer onboarding. The user explicitly confirmed that recording workflow

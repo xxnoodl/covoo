@@ -1,5 +1,6 @@
 #define NOMINMAX
 #include "bridge.h"
+#include "receiver_process.h"
 #include <windows.h>
 #include <bcrypt.h>
 #include <sddl.h>
@@ -111,6 +112,7 @@ struct Bridge::Impl {
     Handle pipe;
     std::atomic<bool> stop{false};
     std::thread worker;
+    std::unique_ptr<ReceiverProcess> receiver;
 
     Impl(Source& source, const std::wstring& directory) : source(source) {
         std::array<unsigned char, 16> randomId{};
@@ -149,6 +151,7 @@ struct Bridge::Impl {
         catch (...) { DeleteFileW(link.c_str()); throw; }
     }
     ~Impl() {
+        receiver.reset(); // Graceful archive shutdown before closing the feeder.
         stop.store(true, std::memory_order_release);
         if (worker.joinable()) worker.join();
         DeleteFileW(link.c_str());
@@ -273,4 +276,13 @@ struct Bridge::Impl {
 Bridge::Bridge(Source& source, const std::wstring& directory) : impl_(std::make_unique<Impl>(source, directory)) {}
 Bridge::~Bridge() = default;
 const std::string& Bridge::instance() const noexcept { return impl_->id; }
+void Bridge::startReceiver(const std::string& address, const std::string& profile) {
+    if (impl_->receiver && !impl_->receiver->finished()) throw std::runtime_error("Receiver is already running or stopping.");
+    impl_->receiver = std::make_unique<ReceiverProcess>(impl_->id, address, profile);
+}
+void Bridge::stopReceiver() { if (impl_->receiver) impl_->receiver->stop(); }
+void Bridge::forgetReceiver() {
+    if (!impl_->receiver) throw std::runtime_error("Start the receiver before resetting its pairing.");
+    impl_->receiver->forget();
+}
 } // namespace covoo

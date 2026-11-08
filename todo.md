@@ -43,6 +43,38 @@ acceptance gates still apply before dependent work or milestone sign-off.
 
 ## Required acceptance tests, scheduled later
 
+- [ ] Integrated VST3 workflow: validate new native editor in Live, first-time
+  QR, saved-project startup without the standalone app, multiple/copy instances,
+  Stop/Reset pairing, current-recordings link, interface loss/conflicts, closing
+  the editor during a take, active-take device removal and Live close/crash.
+  Isolated tests do not accept physical Live behavior. See integrated-workflow-update.md.
+- [ ] New iOS scanner/background source: macOS unsigned build and simulator tests,
+  then signed iPhone 16 Pro installation, camera allow/deny/retry/cancel and app
+  background during scanning; unrelated/malformed QR rejection and no secret logs.
+  Validate recording while locked against phone/PC PCM and final ACK, foreground
+  return, interruptions and phone-headphone inhibit safety. The installed older
+  build still stops on lock. No new iOS build/CI pass is claimed yet.
+
+- [x] Retest corrected VST3 loading in Live: user loaded the corrected source,
+  heard phone audio and reports usable latency with reverb. Live logs confirm
+  creation. This is basic load/monitor acceptance; post-effect recording, lifecycle,
+  stability and measured latency remain pending. See docs/testing/results/vst3-2026-11-08.md.
+  First attempt failed because the
+  instrument had no event input. Use build/covoo-vst3-test-nov8-event-input.zip,
+  close Live before replacing the whole bundle, reopen and rescan. Automated
+  regression and validator checks pass; later physical loading now passes above.
+
+- [ ] iPhone 16 Pro baseline (replaced iPhone 14 November 8): record iOS/app build,
+  signing/install, pairing/Remember/relaunch, actual microphone/rate/granted I/O,
+  controlled Wi-Fi/USB route and bit-exact phone/PC PCM. Earlier iPhone 14 results
+  do not accept this new device. Recheck headphone adapters and route safety when
+  testing monitoring; no assumed Keychain migration or lower physical latency.
+- [x] iPhone 16 Pro first dry PCM comparison: phone 511EBB2C / PC 6157c09769d02b09,
+  all 1,461,120 frames / 30.44 seconds exact at 48 kHz; actual I/O 5 ms, iPhone
+  Microphone. Sleep stopped capture by policy and final acknowledgment was clean.
+  App build remains unknown; OS string is in the result report. This does not
+  complete the broader new-device baseline or background recording acceptance.
+
 - [ ] VST3 source/bridge: Live scan/load/remove,
   instrument processing without MIDI notes, explicit receiver/instance selection,
   effects and recording post-effect audio, 32/64-bit/rate/block changes, multiple
@@ -151,6 +183,13 @@ acceptance gates still apply before dependent work or milestone sign-off.
 
 ## Implementation still required
 
+- [x] Integrated VST3 QR/connection/status view, internal receiver lifetime,
+  saved-project profile/port restore, current-recordings link and pairing reset.
+  Local automated scope is in docs/milestones/integrated-workflow-update.md.
+- [x] iPhone in-app QR scanner, About/report build labels and active background
+  audio continuation implemented in source. macOS build/simulator and physical
+  acceptance are pending above; these are not yet an installable updated IPA.
+
 - [x] Proceed with the VST3 source prototype: user said to continue after the
   proposal. This authorizes independent implementation, not Live/latency acceptance.
 - [x] Offline VST3 source foundation: local Covoo validator 47/47 and synthetic
@@ -159,7 +198,8 @@ acceptance gates still apply before dependent work or milestone sign-off.
 - [x] VST3 authenticated receiver bridge, explicit CLI instance selection/probing,
   host feedback, worker-side clock adaptation and local receiver interoperability
   checks implemented. See docs/milestones/vst3-bridge-update.md for verified scope.
-- [ ] VST3 desktop instance selection/status and user-test bundle/Live guide.
+- [x] VST3 desktop instance selection/status and uninstalled development bundle/Live guide implemented.
+  Local automated verification is recorded in docs/milestones/vst3-desktop-update.md.
   A suitable existing playback driver and physical Live validation remain needed.
   Custom ASIO stays outside authorization. See ADR 0011.
 - [ ] Recordings access, deferred by user: Open recordings currently opens the

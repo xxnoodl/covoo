@@ -14,7 +14,7 @@ if (-not (Test-Path -LiteralPath $compiler)) { throw 'Windows .NET Framework C# 
 if ($LASTEXITCODE -ne 0) { throw 'Desktop launcher build failed.' }
 [IO.File]::Copy([IO.Path]::GetFullPath($ReceiverPath), (Join-Path $Destination 'covoo-receiver.exe'))
 # Explicit input list: no recordings, local settings, credentials or build logs.
-$scripts = @('desktop.ps1', 'desktop-common.ps1', 'receiver-profiles.ps1', 'daw-latency.ps1', 'start-desktop.cmd',
+$scripts = @('desktop.ps1', 'desktop-common.ps1', 'receiver-profiles.ps1', 'daw-latency.ps1', 'plugin-route.ps1', 'start-desktop.cmd',
     'install-covoo.cmd', 'install-covoo.ps1', 'install-common.ps1', 'uninstall-covoo.cmd', 'uninstall-covoo.ps1',
     'start-receiver.cmd', 'start-daw.cmd', 'start-daw-fast.cmd', 'start-daw-lowlatency.cmd',
     'start-daw-balanced.cmd', 'start-headphone-check.cmd', 'headphone-check.ps1',

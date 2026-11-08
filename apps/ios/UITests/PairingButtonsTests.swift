@@ -2,6 +2,20 @@ import XCTest
 
 final class PairingButtonsTests: XCTestCase {
     @MainActor
+    func testScannerCanBeCancelledWithoutConnecting() {
+        let app = XCUIApplication()
+        app.launch()
+        let scan = app.buttons["pairing.scan"]
+        XCTAssertTrue(scan.waitForExistence(timeout: 10))
+        scan.tap()
+        let cancel = app.buttons["Cancel"]
+        XCTAssertTrue(cancel.waitForExistence(timeout: 5))
+        cancel.tap()
+        XCTAssertTrue(scan.waitForExistence(timeout: 5))
+        XCTAssertTrue(app.buttons["Connect"].exists)
+        app.terminate()
+    }
+    @MainActor
     func testRememberAndForgetAreIndependentListActions() {
         let app = XCUIApplication()
         app.launch()

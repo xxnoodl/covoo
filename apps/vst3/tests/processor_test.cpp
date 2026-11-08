@@ -17,6 +17,11 @@ static void exercise(int32 sampleSize, double rate) {
     require(processor->initialize(nullptr) == kResultOk, "initialize failed");
     require(processor->getBusCount(kAudio, kInput) == 0, "hardware input bus exposed");
     require(processor->getBusCount(kAudio, kOutput) == 1, "output bus missing");
+    require(processor->getBusCount(kEvent, kInput) == 1, "instrument event input missing");
+    BusInfo events{};
+    require(processor->getBusInfo(kEvent, kInput, 0, events) == kResultOk &&
+        events.channelCount == 1 && events.busType == kMain &&
+        (events.flags & BusInfo::kDefaultActive), "instrument event input invalid");
     ProcessSetup setup{kRealtime, sampleSize, 1024, rate};
     require(processor->setupProcessing(setup) == kResultOk, "setup failed");
     require(processor->setActive(true) == kResultOk, "activation failed");
@@ -39,6 +44,7 @@ static void exercise(int32 sampleSize, double rate) {
     data.symbolicSampleSize = sampleSize;
     data.numOutputs = 1;
     data.outputs = &bus;
+    // No inputEvents: live source audio must not depend on MIDI notes.
     std::size_t offset = 0;
     for (int32 block : {1, 63, 128, 256, 512}) {
         data.numSamples = block;
@@ -69,7 +75,7 @@ static void exercise(int32 sampleSize, double rate) {
 
     MemoryStream state;
     require(processor->getState(&state) == kResultOk, "state save failed");
-    require(state.getSize() == 1, "state contains more than version marker");
+    require(state.getSize() == 3, "empty receiver state contains unexpected data");
     state.seek(0, IBStream::kIBSeekSet, nullptr);
     require(processor->setState(&state) == kResultOk, "state restore failed");
     require(processor->setState(nullptr) != kResultOk, "null state accepted");

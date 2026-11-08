@@ -44,7 +44,7 @@ if ($SdkRoot) {
 } else { $configure += '-DCOVOO_VST3_SDK=' }
 Invoke-Checked $cmakePath $configure
 $targets = @('covoo_source_test')
-if ($SdkRoot) { $targets += @('covoo_source', 'covoo_processor_test', 'covoo_bridge_host') }
+if ($SdkRoot) { $targets += @('covoo_source', 'covoo_processor_test', 'covoo_bridge_host', 'covoo_editor_host') }
 $previousDirectory = $env:COVOO_VST3_LINK_DIRECTORY
 $env:COVOO_VST3_LINK_DIRECTORY = Join-Path $build 'validator-links'
 try {

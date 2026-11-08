@@ -5,6 +5,7 @@ param(
 $ErrorActionPreference = 'Stop'
 $repo = Split-Path -Parent $PSScriptRoot
 . (Join-Path $PSScriptRoot 'desktop-common.ps1')
+. (Join-Path $PSScriptRoot 'plugin-route.ps1')
 $receiver = (Resolve-Path -LiteralPath $ReceiverPath).Path
 $hostExe = (Resolve-Path -LiteralPath $HostPath).Path
 $root = Join-Path $repo ('build/vst3-bridge-check-' + [guid]::NewGuid().ToString('N'))
@@ -48,6 +49,11 @@ try {
             }
             $probe = Run-Client @('--probe-plugin', $id) $true "probe-$rate.log" | ConvertFrom-Json
             if (-not $probe.authenticated -or $probe.host_rate -ne $rate) { throw 'Authenticated feedback differs from host setup.' }
+            Start-Sleep -Milliseconds 30
+            $choices = Invoke-PluginQuery $receiver @('--list-plugin-instances')
+            if (@($choices.instances.instance) -notcontains $id) { throw 'Desktop discovery omitted the host.' }
+            $route = @(Get-PluginRouteArguments $receiver $id)
+            if ($route.Count -ne 2 -or $route[1] -cne $id) { throw 'Desktop selected a different instance.' }
             Start-Sleep -Milliseconds 30
             if ($rate -eq 48000) {
                 $record = [IO.File]::ReadAllBytes($link)
@@ -105,6 +111,9 @@ try {
             [IO.File]::WriteAllText((Join-Path $root "host-$rate.log"), $hostOutput.Result + $hostError.Result)
             if ($hostProcess.ExitCode -ne 0) { throw "Bridge host audio/lifecycle check failed. See $root\host-$rate.log" }
             if (Test-Path -LiteralPath $link) { throw 'Clean host exit retained a credential file.' }
+            $rejected = $false
+            try { Get-PluginRouteArguments $receiver $id | Out-Null } catch { $rejected = $true }
+            if (-not $rejected) { throw 'Desktop accepted a removed host.' }
             Write-Host "Authenticated TLS/UDP to VST source passed at host $rate Hz. Archive samples remain exact."
         } finally {
             if (-not $hostProcess.HasExited) { $hostProcess.Kill(); $hostProcess.WaitForExit() }

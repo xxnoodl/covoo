@@ -6,6 +6,7 @@ pub mod engine_period;
 pub mod live;
 #[cfg(windows)]
 pub mod native_output;
+mod pairing_bitmap;
 pub mod playout;
 pub mod plugin_bridge;
 pub mod recording;

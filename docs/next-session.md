@@ -1,5 +1,53 @@
 # Next session
 
+## Current implementation: integrated workflow
+
+The VST3 now has its own native pairing/status view and manages a hidden packaged
+receiver; no standalone Windows window or instance selection is needed. Explicit
+interface choice and Start are first-time setup; save the Live project to restore
+the protected receiver profile/port automatically. Recordings opens the current
+dry archive folder. Read docs/milestones/integrated-workflow-update.md and the
+short docs/testing/vst3-quick-start.md. This supersedes the older workflow below.
+Local uninstalled bundle: `build/covoo-vst3-integrated-nov8.zip`. Required Rust
+checks (42 tests), 47 SDK validator checks, synthetic bridge, native managed-editor
+start/restore/reset/stop and package integrity checks passed. Nothing was installed
+into Live; no new remote CI result is claimed.
+
+iPhone in-app QR scanning, active locked-screen recording and About/report build
+metadata are implemented in source. New scanner/parser and simulator UI coverage
+are added but not run here: an updated macOS CI/iOS build and signed-device checks
+are still required. The currently installed phone build still stops on lock.
+Do not claim the previous Live latency result validates these new features.
+
+## November 8 handoff
+
+Latest physical update: corrected VST3 loaded in Live; user reports usable
+latency, including reverb. iPhone 16 Pro phone 511EBB2C / PC 6157c09769d02b09
+passed full PCM comparison (30.44 seconds). Sleep stops capture by policy;
+this take finalized cleanly. Actual I/O 5 ms, 48 kHz, iPhone Microphone; report
+includes OS version, but not app build. Four feeder starvation events remain.
+See `docs/testing/results/vst3-2026-11-08.md`. This supersedes pending load/first
+PCM statements below; full lifecycle, post-effect recording and latency acceptance
+remain open. Keep the app visible and screen awake until background work exists.
+
+The user's phone changed from iPhone 14 to iPhone 16 Pro. Previous device results
+remain evidence for the old setup; installation/signing, pairing, actual capture
+format/I/O, USB transport and recording integrity on the new phone are pending.
+Do not assume Keychain migration or improved latency from the model change.
+
+Desktop VST3 discovery, explicit selection and pre-start authentication are now
+implemented. IDs stay session-local and are never automatically substituted.
+Worker-observed host state/errors appear in receiver status; stale observations
+are labelled. The development bundle and Live workflow are described in
+`docs/testing/vst3-live.md` and `docs/milestones/vst3-desktop-update.md`.
+Local corrected bundle: `build/covoo-vst3-test-nov8-event-input.zip`. First Live
+load failed due to a missing instrument event input; repaired and regression
+tested, but Live retest remains pending. Rust, synthetic
+bridge, desktop UI and isolated package checks passed; no new CI/Live result.
+Next physical batch: install the compatible phone app when ready, pair the 16 Pro,
+validate dry PCM, then Live source/effects recording and measured latency.
+These steps do not accept M3-M6 or require a new phone recording for code work.
+
 Desktop controls, saved pairing and per-user Windows packaging are implemented.
 The user confirms basic install/uninstall, Stop receiver, normal window close
 and receiver Stop/Start re-pairing without rescanning. They found that the shared
@@ -68,7 +116,7 @@ and actual Ableton-effects monitoring latency remain pending; no settings change
    rates, including exact archives, wrong credentials, stalled peer and host
    pause/offline checks. Read docs/milestones/vst3-bridge-update.md and
    docs/protocols/vst-bridge.md. Next: desktop instance selection/status and an
-   uninstalled user-test bundle/Live guide. The current bundle is development-only;
+   uninstalled user-test bundle/Live guide (now implemented; see November 8 above). The current bundle is development-only;
    Live and physical latency acceptance remain deferred. A fresh plug-in
    activation creates a new instance ID; no automatic fallback is allowed.
 5. User-confirmed: Windows install/uninstall, Stop/window close, receiver Stop/

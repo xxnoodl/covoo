@@ -8,7 +8,7 @@ settings:
     PRODUCT_DISPLAY_NAME: covoo
     PRODUCT_BUNDLE_IDENTIFIER: org.example.phonemic
     MARKETING_VERSION: "0.1.0"
-    CURRENT_PROJECT_VERSION: "1"
+    CURRENT_PROJECT_VERSION: "2"
     SWIFT_OBJC_BRIDGING_HEADER: Native/PhoneMic-Bridging-Header.h
     CLANG_C_LANGUAGE_STANDARD: c11
     TARGETED_DEVICE_FAMILY: "1"
@@ -22,6 +22,8 @@ targets:
       properties:
         CFBundleDisplayName: $(PRODUCT_DISPLAY_NAME)
         NSMicrophoneUsageDescription: Record your microphone to a local test WAV file.
+        NSCameraUsageDescription: Scan the pairing QR code shown by covoo on your PC. No photos or video are saved.
+        UIBackgroundModes: [audio]
         NSLocalNetworkUsageDescription: Find your covoo receiver and stream microphone audio privately over your local network.
         NSBonjourServices: ["_covoo._tcp"]
         CFBundleURLTypes:

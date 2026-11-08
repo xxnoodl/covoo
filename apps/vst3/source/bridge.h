@@ -14,6 +14,9 @@ public:
     Bridge(const Bridge&) = delete;
     Bridge& operator=(const Bridge&) = delete;
     const std::string& instance() const noexcept;
+    void startReceiver(const std::string& address, const std::string& profile);
+    void stopReceiver();
+    void forgetReceiver();
 private:
     struct Impl;
     std::unique_ptr<Impl> impl_;

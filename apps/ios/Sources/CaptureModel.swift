@@ -30,7 +30,8 @@ final class CaptureModel: ObservableObject {
         observe(AVAudioSession.interruptionNotification, message: "Audio interrupted. Start again when ready.")
         observe(AVAudioSession.mediaServicesWereLostNotification, message: "Audio service lost. Start again when ready.")
         observe(AVAudioSession.mediaServicesWereResetNotification, message: "Audio service reset. Start again when ready.")
-        // M1 records in the foreground. Background/lock support is a later acceptance test.
+        // Active audio may continue with the audio background mode. An unfinished
+        // startup still stops; never start the microphone from the background.
         observers.append(NotificationCenter.default.addObserver(forName: UIApplication.willResignActiveNotification,
             object: nil, queue: .main) { [weak self] _ in
                 // Notification delivery is explicitly on main. Request the lease
@@ -42,7 +43,11 @@ final class CaptureModel: ObservableObject {
                 Task { @MainActor [weak self] in
                     guard let self else { return }
                     self.beginBackgroundFinalization()
-                    self.service.stop(reason: "App backgrounded. Recording stopped.")
+                    if !self.state.recording {
+                        self.service.stop(reason: "App backgrounded before recording started.")
+                    } else {
+                        self.endBackgroundFinalization()
+                    }
                     if !self.state.recording && !self.requesting { self.pauseIdleConnection() }
                 }
             })
@@ -139,6 +144,7 @@ final class CaptureModel: ObservableObject {
         guard !state.recording, !requesting else { return }
         do {
             _ = try PairingDetails(link: url.absoluteString)
+            disconnectReceiver()
             pairingLink = url.absoluteString
             streamState.status = "Pairing link received. Tap Connect."
         } catch { streamState.status = error.localizedDescription }

@@ -488,7 +488,9 @@ final class CaptureService {
                 "dropped_frames": state.droppedFrames, "queue_high_water_blocks": state.highWater,
                 "discontinuities": state.discontinuities, "max_successful_callback_ms": state.maxCallbackMS,
                 "wav_structurally_valid": validWAV, "events": events,
-                "end_to_end_latency": "not measured", "ios_version": ProcessInfo.processInfo.operatingSystemVersionString]
+                "end_to_end_latency": "not measured", "ios_version": ProcessInfo.processInfo.operatingSystemVersionString,
+                "app_version": Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "Unknown",
+                "app_build": Bundle.main.object(forInfoDictionaryKey: "CFBundleVersion") as? String ?? "Unknown"]
             do {
                 let data = try JSONSerialization.data(withJSONObject: report, options: [.prettyPrinted, .sortedKeys])
                 try data.write(to: reportURL, options: .atomic)

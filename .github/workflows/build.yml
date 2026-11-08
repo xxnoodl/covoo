@@ -100,9 +100,22 @@ jobs:
         run: |
           rustup toolchain install 1.85.0 --profile minimal
           cargo +1.85.0 build --workspace --locked
+          cargo +1.85.0 build --workspace --release --locked
       - name: Authenticated receiver to VST processor
         shell: powershell
         run: ./scripts/test-vst3-bridge.ps1
+      - name: Managed receiver and native plug-in editor
+        shell: powershell
+        run: ./scripts/test-vst3-editor.ps1 -ReceiverPath target/debug/windows-receiver.exe
+      - name: Package uninstalled integrated VST3
+        shell: powershell
+        run: ./scripts/package-vst3-test.ps1 -Destination build/covoo-vst3-integrated
+      - uses: actions/upload-artifact@v4
+        with:
+          name: covoo-vst3-development
+          path: build/covoo-vst3-integrated.zip
+          if-no-files-found: error
+          retention-days: 7
       - uses: actions/upload-artifact@v4
         if: always()
         with:

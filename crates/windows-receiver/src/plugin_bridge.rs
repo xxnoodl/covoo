@@ -1,6 +1,19 @@
 //! Opt-in local VST feeder. No OS endpoint, phone trust or archive ownership.
 use std::{io, path::PathBuf};
 
+#[derive(Clone)]
+pub struct LiveStatus(std::sync::Arc<std::sync::Mutex<(std::time::Instant, String)>>);
+impl LiveStatus {
+    pub fn snapshot(&self) -> String {
+        let status = self.0.lock().unwrap();
+        if status.0.elapsed() > std::time::Duration::from_secs(2) {
+            format!("Stale worker observation: {}", status.1)
+        } else {
+            status.1.clone()
+        }
+    }
+}
+
 pub fn valid_instance(id: &str) -> bool {
     id.len() == 32
         && id
@@ -27,6 +40,7 @@ mod unsupported {
     use super::*;
     pub struct BridgeSession {
         pub sender: std::sync::mpsc::SyncSender<crate::recording::AudioPacket>,
+        pub status: LiveStatus,
     }
     impl BridgeSession {
         pub fn start(_: &str, _: u32, _: PathBuf) -> io::Result<Self> {
@@ -285,6 +299,7 @@ mod windows {
 
     pub struct BridgeSession {
         pub sender: mpsc::SyncSender<AudioPacket>,
+        pub status: LiveStatus,
         stop: Arc<AtomicBool>,
         worker: Option<thread::JoinHandle<()>>,
     }
@@ -294,14 +309,28 @@ mod windows {
             let pipe = connect(id, &stop)?;
             let (sender, receiver) = mpsc::sync_channel(16);
             let stopping = stop.clone();
+            let status = Arc::new(std::sync::Mutex::new((
+                Instant::now(),
+                "Authenticated; awaiting host feedback".into(),
+            )));
+            let live_status = status.clone();
             let worker = thread::Builder::new()
                 .name("covoo-vst-feeder".into())
                 .spawn(move || {
                     let mut report = serde_json::json!({"kind":"vst3 feeder","source_rate":rate,
                     "physical_latency":"not measured","error":null});
-                    if let Err(error) = feed(pipe, rate, receiver, &stopping, &mut report) {
+                    if let Err(error) =
+                        feed(pipe, rate, receiver, &stopping, &mut report, &live_status)
+                    {
                         report["error"] = error.to_string().into();
                     }
+                    *live_status.lock().unwrap() = (
+                        Instant::now(),
+                        report["error"].as_str().map_or_else(
+                            || "Feeder stopped".into(),
+                            |error| format!("Feeder failed: {error}"),
+                        ),
+                    );
                     if let Err(error) = fs::write(path, serde_json::to_vec_pretty(&report).unwrap())
                     {
                         eprintln!("Plug-in report unavailable: {error}");
@@ -309,6 +338,7 @@ mod windows {
                 })?;
             Ok(Self {
                 sender,
+                status: LiveStatus(status),
                 stop,
                 worker: Some(worker),
             })
@@ -332,6 +362,7 @@ mod windows {
         receiver: mpsc::Receiver<AudioPacket>,
         stop: &AtomicBool,
         report: &mut serde_json::Value,
+        status: &std::sync::Mutex<(Instant, String)>,
     ) -> io::Result<()> {
         let mut adapter = None;
         let mut state = None;
@@ -420,6 +451,19 @@ mod windows {
                     stop,
                     Instant::now() + Duration::from_millis(250),
                 )?;
+                *status.lock().unwrap() = (
+                    Instant::now(),
+                    format!(
+                        "Authenticated; host {}; {} Hz; {} queued frames; physical latency unmeasured",
+                        if info.running {
+                            "processing"
+                        } else {
+                            "paused/offline"
+                        },
+                        info.rate,
+                        info.queued
+                    ),
+                );
             }
             Ok(())
         })();
@@ -454,6 +498,20 @@ mod windows {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn live_status_exposes_failures_and_stale_observations() {
+        use std::{
+            sync::{Arc, Mutex},
+            time::{Duration, Instant},
+        };
+        let status = LiveStatus(Arc::new(Mutex::new((
+            Instant::now(),
+            "Feeder failed: disconnected".into(),
+        ))));
+        assert_eq!(status.snapshot(), "Feeder failed: disconnected");
+        status.0.lock().unwrap().0 = Instant::now() - Duration::from_secs(3);
+        assert!(status.snapshot().starts_with("Stale worker observation:"));
+    }
     #[test]
     fn instance_selection_cannot_escape_link_directory() {
         assert!(valid_instance("0123456789abcdef0123456789abcdef"));

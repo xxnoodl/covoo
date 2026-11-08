@@ -4,6 +4,7 @@ import SwiftUI
 struct PhoneMicApp: App {
     @StateObject private var capture = CaptureModel()
     @StateObject private var discovery = ReceiverDiscovery()
+    @State private var scanning = false
     private var productName: String {
         Bundle.main.object(forInfoDictionaryKey: "CFBundleDisplayName") as? String ?? "covoo"
     }
@@ -13,6 +14,10 @@ struct PhoneMicApp: App {
             NavigationStack {
                 List {
                     Section("Windows receiver") {
+                        Button("Scan QR code") { scanning = true }
+                            .buttonStyle(.borderless)
+                            .accessibilityIdentifier("pairing.scan")
+                            .disabled(capture.state.recording || capture.requesting)
                         Button("Find receivers") { discovery.start() }
                         Text(discovery.status).font(.caption)
                         ForEach(discovery.names, id: \.self) { Text($0) }
@@ -21,7 +26,7 @@ struct PhoneMicApp: App {
                             .textInputAutocapitalization(.never)
                             .autocorrectionDisabled()
                             .disabled(capture.state.recording || capture.requesting)
-                        Text("Scan the receiver QR with Camera, or paste its pairing link here.").font(.caption)
+                        Text("Scan the QR here, then tap Remember receiver and Connect.").font(.caption)
                         Button("Remember receiver") { capture.rememberReceiver() }
                             .buttonStyle(.borderless)
                             .accessibilityIdentifier("pairing.remember")
@@ -113,12 +118,18 @@ struct PhoneMicApp: App {
                         LabeledContent("Discontinuities", value: "\(capture.state.discontinuities)")
                         LabeledContent("Max callback work", value: capture.state.callbacks > 0 ? String(format: "%.3f ms", capture.state.maxCallbackMS) : "Not measured")
                         Text("Callback work is software timing, not input latency.")
-                        Text("Keep the app open. Locking or backgrounding stops recording.")
+                        Text("Recording can continue with the screen locked. Calls and audio interruptions can still stop a take.")
                         Text("The PC saves a WAV. The DAW can monitor through the selected Windows audio route.")
+                    }
+                    Section("About") {
+                        LabeledContent("App version", value: Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "Unknown")
+                        LabeledContent("App build", value: Bundle.main.object(forInfoDictionaryKey: "CFBundleVersion") as? String ?? "Unknown")
+                        LabeledContent("iOS", value: ProcessInfo.processInfo.operatingSystemVersionString)
                     }
                 }
                 .navigationTitle(productName)
                 .onOpenURL { capture.acceptPairingURL($0) }
+                .sheet(isPresented: $scanning) { PairingScanner { capture.acceptPairingURL($0) } }
             }
         }
     }
