@@ -1,0 +1,48 @@
+# Start manually on an individual account with free macOS M2 minutes.
+# No push triggers, Apple credentials, signing or store publishing.
+workflows:
+  ios-unsigned:
+    name: covoo iOS unsigned build and tests
+    instance_type: mac_mini_m2
+    max_build_duration: 40
+    environment:
+      xcode: latest
+    scripts:
+      - name: Tool versions and project generation
+        script: |
+          set -euo pipefail
+          xcodebuild -version
+          swift --version
+          if ! command -v xcodegen >/dev/null 2>&1; then
+            brew install xcodegen
+          fi
+          xcodegen --version
+          cd apps/ios
+          xcodegen generate
+      - name: Test native queue
+        script: bash scripts/test-native.sh
+      - name: Build simulator and device without signing
+        script: |
+          set -euo pipefail
+          mkdir -p build
+          cd apps/ios
+          xcodebuild -project PhoneMic.xcodeproj -scheme PhoneMic -configuration Debug -destination 'generic/platform=iOS Simulator' -derivedDataPath ../../build/simulator -resultBundlePath ../../build/simulator.xcresult CODE_SIGNING_ALLOWED=NO build 2>&1 | tee ../../build/ios-simulator.log
+          xcodebuild -project PhoneMic.xcodeproj -scheme PhoneMic -configuration Debug -destination 'generic/platform=iOS' -derivedDataPath ../../build/device -resultBundlePath ../../build/device.xcresult CODE_SIGNING_ALLOWED=NO build 2>&1 | tee ../../build/ios-device.log
+      - name: Run iOS simulator tests
+        script: bash scripts/test-ios.sh
+      - name: Package IPA for local iLoader signing
+        script: |
+          set -euo pipefail
+          bash scripts/package-ios.sh
+          {
+            git rev-parse HEAD
+            xcodebuild -version
+            /usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' build/device/Build/Products/Debug-iphoneos/PhoneMic.app/Info.plist
+            /usr/libexec/PlistBuddy -c 'Print :CFBundleVersion' build/device/Build/Products/Debug-iphoneos/PhoneMic.app/Info.plist
+            shasum -a 256 build/covoo-unsigned.ipa
+          } > build/ios-build-info.txt
+    artifacts:
+      - build/covoo-unsigned.ipa
+      - build/ios-build-info.txt
+      - build/ios-*.log
+      - build/*.xcresult
