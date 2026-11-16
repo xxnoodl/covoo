@@ -6,6 +6,10 @@ acceptance gates still apply before dependent work or milestone sign-off.
 
 ## Deferred comparisons
 
+- [ ] November 16: user explicitly postponed the 10-minute effects/lock stability
+  take and other physical tests. Continue independent implementation and
+  automation; keep long-run stability, drift and physical latency unaccepted.
+
 - [ ] Recovery update retest: same controlled USB outage, compare all PC segments
   against local offsets, measure actual cable-out and resume times, and check
   network_completed stays false when a take was interrupted even if final ACK succeeds.
@@ -42,6 +46,54 @@ acceptance gates still apply before dependent work or milestone sign-off.
 - [ ] Review new starvation timelines from a normal session; no extra take needed now.
 
 ## Required acceptance tests, scheduled later
+
+- [x] November 16 integrated Live workflow: in response to the post-effect
+  recording and saved-project reopen checklist, user confirms everything works.
+  Accept reverb recorded via Post FX and remembered reconnect/stream after
+  reopening for this setup. No measured latency, long-run stability, actual DAW
+  PCM comparison or full lifecycle/multiple-instance acceptance is inferred.
+
+- [ ] November 16: user reports current VST experience is manageable and asks
+  to move on. Continue to post-effect Live recording and project restore checks;
+  do not infer installation of the recovery bundle, repeatable startup, stable
+  USB, measured latency or full lifecycle acceptance from that observation.
+
+- [ ] VST stalled-host recovery update: batch cold starts, device disable/enable,
+  host pause/resume without lifecycle changes, project restore and phone
+  reconnect. Check new detailed host state if silent. Worker recovery fix and
+  automated regression are implemented; initial zero-clock startup and current
+  USB reliability remain unresolved. See docs/milestones/vst3-recovery-update.md.
+
+- [ ] Current user report: wired recording is not working; recent VST attempts
+  are over Wi-Fi. Diagnose current explicit interface binding, phone destination
+  and USB connectivity separately from VST host processing. Historical wired
+  passes do not establish current wired operation.
+  Follow-up: VST audio eventually worked after repeated device on/off and other
+  toggles; exact trigger unknown. Wired connectivity also returned briefly.
+  This establishes intermittent success, not reproducible startup or stable USB.
+
+- [x] Repeat lock-test archive comparison: phone 83E3976C / PC f4e014223c31cca3
+  match bit-for-bit for all 1,305,120 frames (27.19 seconds at 48 kHz), with no
+  reported capture/network loss and a clean final ACK. Exact lock intervals are
+  unrecorded; longer reliability remains pending. See lock-recording-2026-11-14.md.
+
+- [x] Updated iOS basic lock/unlock recording: user confirms locking/unlocking
+  during session 9a54491d0c0df321 and continuous audio. PC report covers 33.845
+  seconds with no missing frames/discontinuities and a valid final summary.
+  Phone original/report comparison, timed lock intervals and longer reliability
+  checks remain pending. See docs/testing/results/lock-recording-2026-11-14.md.
+
+- [ ] Free iOS fallback: publish the prepared `codemagic.yaml`, connect the
+  user's Codemagic individual account with billing disabled, run `ios-unsigned`
+  on desktop-setup, inspect simulator/native results, revision/build metadata
+  and IPA hash, then sign/install locally with iLoader. No Codemagic run or new
+  IPA yet. See docs/testing/codemagic-ios.md. GitHub's current account unlock
+  state is unknown because this session's connector refused a retry.
+
+- [ ] CI retry after the account owner resolves GitHub's billing lock: run
+  42443412659 for 60edd86 was rejected before any job steps, so no iOS build,
+  simulator test or new IPA exists. Rerun failed jobs, inspect actual results,
+  then retrieve/inspect the unsigned build-2 IPA for local iLoader signing.
 
 - [ ] Integrated VST3 workflow: validate new native editor in Live, first-time
   QR, saved-project startup without the standalone app, multiple/copy instances,
@@ -182,6 +234,43 @@ acceptance gates still apply before dependent work or milestone sign-off.
   screen lock, network loss, endpoint removal, sleep/resume and a 60-minute run.
 
 ## Implementation still required
+
+- [x] Offline two-stage VST feeder replay using production Renderer and an
+  explicitly simplified host queue. Existing complete trace reproduces source
+  starvation under synthetic scheduling; no buffer/pacing default changed.
+  See docs/performance/vst-feeder-replay.md for bounds and excluded mechanisms.
+- [x] Reorder-aware replay preserving counter/position and arrival ordering;
+  second existing trace has non-monotonic arrival timestamps and was rejected,
+  not modified. Investigate burst recovery before choosing a production policy.
+  Completed follow-up now schedules timestamp chronology with unchanged packet
+  identities through production OrderedInput. Compared 432 modeled runs across
+  two existing traces and three bounded recovery policies. Double-target recovery
+  reduces loss/silence but retains more delay; production default unchanged.
+  See docs/performance/vst-burst-recovery.md. Physical comparison stays deferred.
+
+- [x] Extend offline latency audit to VST feeder reports and inspect existing
+  matching archives without a new take. Two newest dry archives are complete
+  but feeder starvation/discards are reported. No physical latency or audible
+  dropout duration inferred. See docs/milestones/vst3-latency-audit-update.md.
+
+- [x] Preserve VST feeder starvation/discard totals across adapter resets and
+  expose host lifetime silence/discards, last block and readiness observations.
+  Automated tests added; physical checks remain deferred. See
+  docs/milestones/vst3-diagnostics-update.md.
+
+- [ ] Integrated VST workflow failed current physical test: user reports connection
+  and overall experience substantially clunkier than standalone, no Live track
+  meter even with Play, and editor reports host processing paused. Receiver
+  previously showed incoming audio but zero host frames. Diagnose processing
+  and make connection/state feedback usable before accepting this route. Keep
+  standalone available as the working reference; do not classify this as polish.
+  Follow-up: user obtained audio after toggling devices, without identifying the
+  cause. Basic audio output is observed; deterministic startup remains unresolved.
+
+- [ ] User-requested iOS pairing UX: replace Remember receiver's tap action with
+  a toggle showing whether the current receiver is saved. The current button
+  gives insufficient feedback. Show the actual persisted state, reflect save/
+  removal failures truthfully and preserve explicit connection/pinning behavior.
 
 - [x] Integrated VST3 QR/connection/status view, internal receiver lifetime,
   saved-project profile/port restore, current-recordings link and pairing reset.

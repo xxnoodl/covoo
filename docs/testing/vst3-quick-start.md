@@ -33,7 +33,8 @@ again and scan the new QR. Recordings are retained.
 
 ## Current test limits
 
-This is a development build. The new editor and project restore passed isolated
-tests, but still need testing in Live. The in-app scanner and locked-screen
-capture need an updated iOS build and device validation. The previously installed
-phone build still stops when locked. Long stability and physical latency are open.
+This is a development build. User-confirmed Live checks cover audio, post-effect
+recording/playback and saved-project reconnect. Updated iOS lock/unlock recording
+has a short bit-exact phone/PC comparison. Repeatable startup, stable wired
+connectivity, long stability and measured physical latency remain open. The user
+has deferred further physical tests; see todo.md for the next test batch.

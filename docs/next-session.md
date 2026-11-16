@@ -1,5 +1,104 @@
 # Next session
 
+## Latest burst-recovery comparison
+
+Reorder-aware VST replay now handles both traces, preserving packet identities
+and timestamp values through production OrderedInput. Compared current trimming
+with two bounded-retention policies in 432 runs. Double-target recovery reduces
+modeled source discards/recovery silence in all 144 paired cases but can increase
+backlog resets and retain more queue delay. Experimental constructor only;
+normal playback still uses existing policy. No reinstall/physical test now.
+See docs/performance/vst-burst-recovery.md and local build/vst-burst-comparison-*.json.
+Physical comparison and sound-quality validation remain deferred.
+
+## Latest feeder pacing investigation
+
+Added replay_vst_feeder example plus shared strict trace parser. It runs 72
+offline host/worker/buffer scenarios with production Renderer; no Live/endpoint.
+Trace 4004860259c937e4 reproduces source starvation even under idealized worker
+scheduling; receiver arrival gaps reach 58.0644 ms. Increasing target buffers
+reduces, but does not remove, modeled starvation. Production defaults unchanged.
+Second trace rejected for a 26 us timestamp reversal; no timeline rewritten.
+See docs/performance/vst-feeder-replay.md and local build/vst-feeder-replay-400486.json.
+Next independent work: reorder-aware replay and bounded burst-recovery analysis.
+Physical tests remain deferred. This is evidence groundwork, not a latency fix.
+
+## Latest independent audit
+
+The final diagnostics bundle's installed plug-in, receiver and session script
+were hash-verified; hardware tests remain postponed. Offline latency-audit.py
+now accepts --plugin-report. It keeps archive continuity, feeder recovery and
+physical latency separate. All 13 Python checks and 44 Rust tests plus required
+fmt/Clippy/locked build passed. Local read-only audit:
+build/vst3-existing-session-audit.json. Two newest archived takes are complete
+but report 36/38 feeder starvation events. No audible dropout timing or transport
+is inferred. See docs/milestones/vst3-latency-audit-update.md. Next independent
+work: investigate feeder pacing using existing traces; no new recording needed.
+
+## November 16 independent reliability work
+
+User confirmed post-effect Live recording/playback and remembered reconnect
+after project reopen; see docs/testing/results/vst3-2026-11-16.md. User then
+postponed physical tests, including the 10-minute take. Continue independent
+work without requiring new recordings for each change.
+
+VST feeder reports now preserve starvation/discard totals across adapter resets
+and expose host lifetime silence/discards, block size and readiness observation
+counts. Rust fmt/Clippy, all 44 tests, locked debug/release builds and synthetic
+bridge tests at 44.1/48/96 kHz pass. One earlier UDP rejection-count assertion
+failed; isolated/full reruns passed unchanged. See
+docs/milestones/vst3-diagnostics-update.md for limitations.
+Final uninstalled bundle: build/covoo-vst3-diagnostics-nov16-final.zip. No new
+installation or physical acceptance. Earlier intermediate diagnostics ZIP has
+an old receiver; use only the final ZIP. Physical latency, long stability and
+USB reliability remain open; small UI requests stay on the backlog.
+
+## November 14 VST recovery update
+
+Codemagic build at 4e77612 compiled device/simulator and passed 14 simulator
+tests; downloaded IPA hash matched. Installed artifact labels are 1.0/build 1
+despite intended source labels; fix deferred. Repeat lock-test phone 83E3976C /
+PC f4e014223c31cca3 matched all 1,305,120 frames exactly, with clean completion.
+See docs/testing/results/lock-recording-2026-11-14.md.
+
+VST startup initially silent with zero host frames, then worked after unknown
+device toggles. USB returned briefly; stable wired operation is not accepted.
+The recovery update fixes a separate reproducible same-gate callback-stall
+reconnection defect and adds UI host-state diagnostics. Rust, validator 47/47,
+core/processor, synthetic bridge and isolated managed-editor tests passed.
+Uninstalled verified bundle: build/covoo-vst3-recovery-nov14.zip. Save/close Live
+before replacing its installed bundle for the physical retest. Initial startup
+cause, post-effect recording and stability remain open. Detailed report:
+docs/milestones/vst3-recovery-update.md. Remember-toggle is minor backlog work.
+
+## Free iOS fallback prepared, November 8
+
+See [Codemagic setup](testing/codemagic-ios.md) and root `codemagic.yaml`.
+Individual accounts receive 500 free M2 minutes monthly; keep billing disabled.
+The manual workflow builds unsigned device/simulator apps, runs native/iOS tests
+and packages the IPA for local iLoader signing. It is prepared locally, not yet
+committed/pushed or run on Codemagic; no new IPA exists.
+GitHub reports operational service, but the latest repo run remains failed
+attempt 2. The connector refused a new retry because approval is unavailable in
+this session. Present account unlock status is therefore unknown. User sign-in
+to Codemagic is needed before the fallback can run.
+
+## Immediate blocker: GitHub Actions billing
+
+User-requested retry (attempt 2, November 8 03:54 UTC) failed with the same
+account-lock annotation before any steps. Billing screenshots show $0 billed;
+the cause of GitHub's lock remains unknown. Cloud builds are paused again.
+User requires explicit approval before paid services or increased spending limits.
+
+Revision `60edd86` was pushed to desktop-setup for the iOS scanner/background
+build (app build number 2). Actions run 42443412659 rejected all four jobs before
+any steps because the GitHub account is locked due to a billing issue. No CI
+tests ran and no new IPA exists. After the account owner resolves billing, rerun
+that run's failed jobs, inspect the iOS compiler/simulator results and retrieve
+the unsigned sideload IPA for the established local iLoader signing process.
+See docs/milestones/integrated-workflow-update.md for evidence and run link.
+Do not alter billing or request Apple credentials.
+
 ## Current implementation: integrated workflow
 
 The VST3 now has its own native pairing/status view and manages a hidden packaged

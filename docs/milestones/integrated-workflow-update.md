@@ -1,5 +1,59 @@
 # Integrated DAW workflow and phone scanner
 
+## Free build fallback prepared, November 8
+
+Added a manual Codemagic M2 workflow and
+[setup guide](../testing/codemagic-ios.md). Its individual plan currently offers
+500 free Mac minutes per month; billing stays disabled. It reuses the unsigned
+build, simulator and packaging paths for local iLoader signing. No remote build,
+IPA or physical acceptance is claimed. The config is local and still needs
+publication and the user's Codemagic sign-in.
+
+GitHub's service status is operational; repository run 42443412659 remains
+failed attempt 2 with zero steps in each job. The connector refused the new
+requested retry because it requires approval and session policy is `never`.
+The account's current lock state cannot be confirmed from that historical run.
+No billing settings or budgets were changed.
+
+Fallback verification: `git diff --check` passed. The required Rust fmt, Clippy,
+locked test and locked build commands were attempted but blocked by local
+process access denial (fmt could not launch cargo metadata; the others could
+not launch the compiler). Bash syntax checking was also blocked by Git Bash's
+signal-pipe access denial. No YAML parser is installed locally, so configuration
+validation and all macOS execution remain pending on Codemagic. Application
+source and existing GitHub workflows were not changed for this fallback.
+
+## CI submission and billing blocker, November 8
+
+At the user's request, retried failed jobs once at 03:54 UTC (attempt 2 of the
+same run). All four jobs failed again. The iOS job 128620883831 ran zero steps;
+its annotation again reports the account locked due to a billing issue. No new
+IPA exists. No billing settings, spending limits or runner types were changed.
+User-provided billing screenshots show fully discounted usage/$0 billed and
+free plans; these do not explain the account lock. Further retries are paused
+pending the user's direction or a GitHub account-lock resolution. Do not enable
+paid usage or raise budgets without the user's explicit approval.
+
+Committed and pushed the integrated implementation as `60edd86` on
+`desktop-setup`. The phone's CFBundleVersion is now 2 so the forthcoming app can
+be distinguished from the previous build 1. The unsigned-device workflow is the
+appropriate existing path for local iLoader signing; no Apple credentials were
+requested or sent to GitHub.
+
+[Run 42443412659](https://github.com/xxnoodl/covoo/actions/runs/42443412659)
+failed before starting any job steps. Public check annotations for iOS, Linux,
+Windows and VST3 each state: "The job was not started because your account is
+locked due to a billing issue." iOS also has a general macOS capacity notice,
+but the explicit account lock is the blocker. No source compilation, simulator
+test, Windows/Linux/VST3 CI check or artifact generation occurred in this run.
+The prior local test evidence remains unchanged. There is no new IPA to install.
+
+After the user resolves the GitHub account billing lock, rerun the failed jobs
+of this exact run, inspect build/simulator results, then download and inspect
+the covoo-ios-sideload-package artifact before handing over its unsigned IPA for
+local iLoader signing. Do not dispatch the paid-team signed workflow or request
+Apple account details. No billing/payment or account setting was changed.
+
 ## Implemented
 
 The Windows VST3 now exposes a native IPlugView editor. First-time controls select
