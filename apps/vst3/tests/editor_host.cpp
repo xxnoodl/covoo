@@ -4,6 +4,8 @@
 #include "public.sdk/source/vst/hosting/hostclasses.h"
 #include "public.sdk/source/common/memorystream.h"
 #include <windows.h>
+#include <array>
+#include <cstring>
 #include <chrono>
 #include <fstream>
 #include <iostream>
@@ -25,8 +27,11 @@ static bool waitFor(const std::filesystem::path& file, const std::string& text, 
     }
     return false;
 }
-int main() {
+int main(int argc, char** argv) {
     try {
+        const bool hold=argc==4 && std::strcmp(argv[1],"--fault-holder")==0;
+        require(argc==1 || hold,"Usage: editor-host [--fault-holder READY PUBLIC_STATE]");
+        const bool restored=hold && std::filesystem::exists(argv[3]);
         require(!covoo::validAddress("1.2.3.999") && !covoo::validAddress("0.0.0.0") && !covoo::validId("../secret"), "untrusted selectors accepted");
         auto* host = new HostApplication;
         auto* processor = new covoo::Processor;
@@ -34,6 +39,15 @@ int main() {
         require(processor->initialize(host) == kResultOk && controller->initialize(host) == kResultOk, "host init failed");
         processor->connect(controller); controller->connect(processor);
         ProcessSetup setup{kRealtime, kSample32, 256, 48000};
+        if (hold && std::filesystem::exists(argv[3])) {
+            const auto bytes=read(argv[3]);
+            require(bytes.size()<=64,"public state fixture too large");
+            MemoryStream saved;
+            int32 written=0;
+            require(saved.write(const_cast<char*>(bytes.data()),static_cast<int32>(bytes.size()),&written)==kResultOk && written==static_cast<int32>(bytes.size()),"state fixture write failed");
+            saved.seek(0,IBStream::kIBSeekSet,nullptr);
+            require(processor->setState(&saved)==kResultOk,"state fixture restore failed");
+        }
         require(processor->setupProcessing(setup) == kResultOk && processor->setActive(true) == kResultOk, "source activation failed");
         controller->receiverCommand("status");
         require(controller->hostState == "Live has not enabled source processing.",
@@ -54,7 +68,7 @@ int main() {
         auto combo = GetDlgItem(child, 101);
         auto index = SendMessageW(combo, CB_ADDSTRING, 0, reinterpret_cast<LPARAM>(L"127.0.0.1 | isolated loopback"));
         SendMessageW(combo, CB_SETCURSEL, index, 0);
-        SendMessageW(child, WM_COMMAND, MAKEWPARAM(103, BN_CLICKED), 0);
+        if (!restored) SendMessageW(child, WM_COMMAND, MAKEWPARAM(103, BN_CLICKED), 0);
         const auto directory = covoo::receiverRun(instance);
         const auto status = directory / L"view.txt";
         require(waitFor(status, "Waiting for phone connection"), ("managed receiver failed: " + read(status) + controller->receiverError).c_str());
@@ -62,8 +76,43 @@ int main() {
         MemoryStream state;
         require(processor->getState(&state) == kResultOk && state.getSize() == 44, "public receiver configuration not saved");
         const auto recordings = read(directory / L"recordings.txt");
-        const auto config = read(directory.parent_path().parent_path() / L"vst3-receivers" / instance / L"connection.json");
+        auto profile=instance;
+        if (hold && std::filesystem::exists(argv[3])) {
+            const auto saved=read(argv[3]);
+            require(saved.size()>=32,"profile fixture missing");
+            profile=saved.substr(saved.size()-32);
+            require(covoo::validId(profile),"profile fixture invalid");
+        }
+        const auto config = read(directory.parent_path().parent_path() / L"vst3-receivers" / profile / L"connection.json");
         require(!recordings.empty() && config.find("port") != std::string::npos, "recordings location/remembered port missing");
+        if (hold) {
+            std::ofstream publicState(argv[3],std::ios::binary);
+            publicState.write(static_cast<const char*>(state.getData()),state.getSize());
+            publicState.close();
+            require(publicState.good(),"public state save failed");
+            std::ofstream ready(argv[2]);ready<<instance;ready.close();
+            require(ready.good(),"ready fixture write failed");
+            const auto stop=std::filesystem::path(argv[2]).replace_extension(".stop");
+            std::array<float,256> left{},right{};
+            float* channels[]{left.data(),right.data()};
+            AudioBusBuffers bus{};bus.numChannels=2;bus.channelBuffers32=channels;
+            ProcessData data{};data.processMode=kRealtime;data.symbolicSampleSize=kSample32;
+            data.numOutputs=1;data.outputs=&bus;data.numSamples=256;
+            const auto deadline=std::chrono::steady_clock::now()+std::chrono::seconds(30);
+            while (!std::filesystem::exists(stop) && std::chrono::steady_clock::now()<deadline) {
+                require(processor->process(data)==kResultOk,"fault host process failed");
+                MSG message{};
+                while(PeekMessageW(&message,nullptr,0,0,PM_REMOVE)) {TranslateMessage(&message);DispatchMessageW(&message);}
+                std::this_thread::sleep_for(std::chrono::milliseconds(5));
+            }
+            require(std::filesystem::exists(stop),"fault holder deadline exceeded");
+            view->removed();view->release();
+            processor->setProcessing(false);processor->setActive(false);
+            processor->disconnect(controller);controller->disconnect(processor);
+            processor->terminate();controller->terminate();processor->release();controller->release();host->release();
+            DestroyWindow(parent);
+            return 0;
+        }
         view->removed(); view->release();
         require(read(status).find("Waiting for phone") != std::string::npos, "closing view stopped the receiver");
         processor->setProcessing(false); processor->setActive(false);

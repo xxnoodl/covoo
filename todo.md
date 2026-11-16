@@ -6,6 +6,12 @@ acceptance gates still apply before dependent work or milestone sign-off.
 
 ## Deferred comparisons
 
+- [ ] M6 actual DAW crash/reopen, repeated lifecycle, sleep/resume and endpoint
+  removal remain deferred. Isolated synthetic active-take crash/restart passes;
+  this does not establish physical recovery or recover the interrupted WAV.
+  See docs/milestones/vst3-fault-recovery.md. Preserve unsaved DAW work before
+  any future destructive fault test.
+
 - [ ] November 16: user explicitly postponed the 10-minute effects/lock stability
   take and other physical tests. Continue independent implementation and
   automation; keep long-run stability, drift and physical latency unaccepted.

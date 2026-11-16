@@ -100,6 +100,7 @@ jobs:
         run: |
           rustup toolchain install 1.85.0 --profile minimal
           cargo +1.85.0 build --workspace --locked
+          cargo +1.85.0 build -p windows-receiver --example managed_take_fixture --locked
           cargo +1.85.0 build --workspace --release --locked
       - name: Authenticated receiver to VST processor
         shell: powershell
@@ -107,6 +108,9 @@ jobs:
       - name: Managed receiver and native plug-in editor
         shell: powershell
         run: ./scripts/test-vst3-editor.ps1 -ReceiverPath target/debug/windows-receiver.exe
+      - name: Active-take host crash and restart
+        shell: powershell
+        run: ./scripts/test-vst3-faults.ps1 -ReceiverPath target/debug/windows-receiver.exe
       - name: Package uninstalled integrated VST3
         shell: powershell
         run: ./scripts/package-vst3-test.ps1 -Destination build/covoo-vst3-integrated

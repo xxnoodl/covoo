@@ -1,5 +1,16 @@
 # Next session
 
+## Latest fault recovery checkpoint
+
+M6 isolated active-take host crash/restart now passes with the real managed
+receiver and synthetic loopback sender. Existing lifetime job removes receiver
+and broker; unfinished archive is rejected; restored pairing/port supports a
+fresh finalized segment. Added read-only recording-health.py and CI wiring.
+49 Rust, 15 example and 18 Python tests plus required checks and existing editor
+lifecycle pass locally. No remote CI, actual Live crash, installation or new
+physical acceptance. See docs/milestones/vst3-fault-recovery.md.
+Continue independent reliability work; batch physical gates from todo.md later.
+
 ## Latest bounded handoff update
 
 Historical 400486 report has 18 VST fanout drops despite complete archive.
