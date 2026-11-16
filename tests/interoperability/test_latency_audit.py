@@ -1,4 +1,8 @@
 import importlib.util
+import json
+import subprocess
+import sys
+import tempfile
 from pathlib import Path
 import unittest
 
@@ -8,6 +12,38 @@ spec.loader.exec_module(audit)
 
 
 class LatencyAuditTests(unittest.TestCase):
+    def test_complete_archive_does_not_hide_silent_or_starved_plugin(self):
+        result = audit.audit(receiver={'pcm_continuity_verified': True}, plugin={
+            'host_clock_frames': 0, 'source_starvation_events': 5,
+            'source_discarded_frames': 100, 'pairing_token': 'must-not-export'})
+        self.assertTrue(result['archive']['pcm_continuity_verified'])
+        self.assertEqual(len(result['plugin_findings']), 3)
+        self.assertIsNone(result['physical_monitoring_latency_ms'])
+        self.assertNotIn('must-not-export', json.dumps(result))
+
+    def test_old_report_keeps_new_metrics_unknown_and_avoids_playback_pass(self):
+        result = audit.audit(plugin={'sent_host_frames_including_silence': 999})
+        self.assertIsNone(result['plugin']['host_readiness_changes'])
+        self.assertIsNone(result['plugin']['host_lifetime_silence_frames'])
+        self.assertEqual(result['plugin_findings'], [])
+        self.assertIn('do not prove audible playback', result['plugin_note'])
+        for invalid in [[], 'not a report', 7]:
+            with self.assertRaises(ValueError):
+                audit.audit(plugin=invalid)
+
+    def test_plugin_cli_reads_bom_and_rejects_invalid_report_shape(self):
+        with tempfile.TemporaryDirectory() as directory:
+            report = Path(directory) / 'plugin.json'
+            report.write_text('{"host_clock_frames":0}', encoding='utf-8-sig')
+            command = [sys.executable, str(spec.origin), '--plugin-report', str(report)]
+            completed = subprocess.run(command, capture_output=True, text=True)
+            self.assertEqual(completed.returncode, 0, completed.stderr)
+            self.assertIsNone(json.loads(completed.stdout)['physical_monitoring_latency_ms'])
+            report.write_text('[]', encoding='utf-8')
+            completed = subprocess.run(command, capture_output=True, text=True)
+            self.assertNotEqual(completed.returncode, 0)
+            self.assertIn('must be a JSON object', completed.stderr)
+
     def test_shutdown_and_partial_settings_do_not_replace_complete_state(self):
         def block(input_latency, complete=True):
             body = ('date: info: Audio In Out: Begin of UpdateAudioStateStatic\n'

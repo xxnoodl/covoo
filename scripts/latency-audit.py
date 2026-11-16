@@ -32,7 +32,10 @@ def ableton_state(text):
     return None
 
 
-def audit(log=None, receiver=None, phone=None):
+def audit(log=None, receiver=None, phone=None, plugin=None):
+    for name, report in [('receiver', receiver), ('phone', phone), ('plugin', plugin)]:
+        if report is not None and not isinstance(report, dict):
+            raise ValueError(f'{name} report must be a JSON object')
     result = {'physical_monitoring_latency_ms': None,
               'note': 'Reported settings, software timing and OS timestamp estimates are not a physical end-to-end measurement.'}
     if log is not None:
@@ -59,6 +62,45 @@ def audit(log=None, receiver=None, phone=None):
                 'network_capture_age_ms_mean', 'network_capture_age_ms_max',
                 'network_dropped_frames', 'network_send_errors']
         result['phone'] = {k: phone.get(k) for k in keys}
+    if plugin is not None:
+        keys = ['source_rate', 'host_rate', 'host_clock_frames', 'host_queued_frames',
+                'host_block_frames', 'host_feedback_observations',
+                'host_not_ready_observations', 'host_readiness_changes',
+                'host_lifetime_silence_frames', 'host_lifetime_discarded_frames',
+                'source_target_frames', 'source_starvation_events',
+                'source_discarded_frames', 'source_queue_overflow_frames',
+                'stale_or_paused_packets', 'sent_host_frames_including_silence',
+                'asrc_adjustment_ppm', 'error']
+        result['plugin'] = {k: plugin.get(k) for k in keys}
+        result['plugin_note'] = (
+            'Source counters describe the feeder take; old reports may retain only the last adapter epoch. '
+            'Host lifetime counters include other takes and startup. Feedback counts are observations, '
+            'not durations. Sent frames can include silence and do not prove audible playback. '
+            'ASRC correction is a software control value, not measured clock drift or physical latency.')
+        findings = []
+        for key, message in [
+                ('source_starvation_events', 'Source starvation was reported.'),
+                ('source_discarded_frames', 'Source frames were discarded.'),
+                ('source_queue_overflow_frames', 'The feeder source queue overflowed.'),
+                ('stale_or_paused_packets', 'Packets were discarded as stale or while the host was not ready.')]:
+            value = plugin.get(key)
+            if type(value) in (int, float) and value > 0:
+                findings.append(message)
+        if plugin.get('host_clock_frames') == 0:
+            findings.append('No advancing live host frames were reported; the cause is not identified.')
+        if plugin.get('error'):
+            findings.append('The feeder reported an error; inspect plugin.error.')
+        result['plugin_findings'] = findings
+        if receiver is not None:
+            keys = ['duration_seconds', 'source_frames_written', 'wav_frames',
+                    'pcm_continuity_verified', 'sender_final_summary_received',
+                    'sender_summary_valid', 'missing_packets_detected',
+                    'silence_frames_inserted', 'leading_frames_not_received',
+                    'trailing_frames_not_received', 'error']
+            result['archive'] = {k: receiver.get(k) for k in keys}
+            result['archive_note'] = (
+                'Archive continuity is separate from VST playback. These reports were supplied '
+                'by the caller; matching take identity and phone/PC PCM require separate verification.')
     return result
 
 
@@ -67,13 +109,15 @@ if __name__ == '__main__':
     parser.add_argument('--ableton-log', type=Path)
     parser.add_argument('--receiver-report', type=Path)
     parser.add_argument('--phone-report', type=Path)
+    parser.add_argument('--plugin-report', type=Path)
     args = parser.parse_args()
-    if not any([args.ableton_log, args.receiver_report, args.phone_report]):
+    if not any([args.ableton_log, args.receiver_report, args.phone_report, args.plugin_report]):
         parser.error('Supply at least one log/report')
     try:
         print(json.dumps(audit(
             args.ableton_log.read_text(errors='replace') if args.ableton_log else None,
-            json.loads(args.receiver_report.read_text()) if args.receiver_report else None,
-            json.loads(args.phone_report.read_text()) if args.phone_report else None), indent=2))
+            json.loads(args.receiver_report.read_text(encoding='utf-8-sig')) if args.receiver_report else None,
+            json.loads(args.phone_report.read_text(encoding='utf-8-sig')) if args.phone_report else None,
+            json.loads(args.plugin_report.read_text(encoding='utf-8-sig')) if args.plugin_report else None), indent=2))
     except (OSError, ValueError) as error:
         parser.exit(1, f'Audit failed: {error}\n')
