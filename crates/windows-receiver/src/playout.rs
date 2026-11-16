@@ -59,7 +59,16 @@ pub struct Renderer {
     output_rate: u32,
     output_position: u64,
     started: bool,
+    backlog_recovery: BacklogRecovery,
     pub stats: Arc<OutputStats>,
+}
+
+/// Experimental replay policy. Normal playback keeps TrimToTarget.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum BacklogRecovery {
+    TrimToTarget,
+    RetainBoundedHeadroom,
+    RetainDoubleTarget,
 }
 
 impl Renderer {
@@ -67,6 +76,20 @@ impl Renderer {
         source_rate: u32,
         output_rate: u32,
         buffer_ms: u32,
+    ) -> Result<(Producer<f32>, Self), String> {
+        Self::new_with_backlog_recovery(
+            source_rate,
+            output_rate,
+            buffer_ms,
+            BacklogRecovery::TrimToTarget,
+        )
+    }
+
+    pub fn new_with_backlog_recovery(
+        source_rate: u32,
+        output_rate: u32,
+        buffer_ms: u32,
+        backlog_recovery: BacklogRecovery,
     ) -> Result<(Producer<f32>, Self), String> {
         if !(8000..=192000).contains(&source_rate)
             || !(8000..=192000).contains(&output_rate)
@@ -121,6 +144,7 @@ impl Renderer {
                 output_rate,
                 output_position: 0,
                 started: false,
+                backlog_recovery,
                 stats,
             },
         ))
@@ -206,12 +230,17 @@ impl Renderer {
             .fetch_max(queued as u64, Ordering::Relaxed);
         if queued > self.high {
             // Recovery only: never allow latency to grow without bound.
-            for _ in self.target..queued {
+            let retain = match self.backlog_recovery {
+                BacklogRecovery::TrimToTarget => self.target,
+                BacklogRecovery::RetainBoundedHeadroom => self.high,
+                BacklogRecovery::RetainDoubleTarget => self.target * 2,
+            };
+            for _ in retain..queued {
                 let _ = self.consumer.pop();
             }
             self.stats
                 .discarded
-                .fetch_add((queued - self.target) as u64, Ordering::Relaxed);
+                .fetch_add((queued - retain) as u64, Ordering::Relaxed);
             self.stats.overruns.fetch_add(1, Ordering::Relaxed);
             self.reset();
         }
@@ -299,6 +328,54 @@ impl Renderer {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn experimental_recovery_is_bounded_and_default_policy_is_unchanged() {
+        for policy in [
+            BacklogRecovery::TrimToTarget,
+            BacklogRecovery::RetainBoundedHeadroom,
+            BacklogRecovery::RetainDoubleTarget,
+        ] {
+            let (mut input, mut output) =
+                Renderer::new_with_backlog_recovery(48000, 48000, 5, policy).unwrap();
+            output.begin_callback(512, None);
+            for _ in 0..4000 {
+                input.push(0.25).unwrap();
+            }
+            output.next_sample();
+            let retained = match policy {
+                BacklogRecovery::TrimToTarget => output.target,
+                BacklogRecovery::RetainBoundedHeadroom => output.high,
+                BacklogRecovery::RetainDoubleTarget => output.target * 2,
+            };
+            assert_eq!(
+                output.stats.discarded.load(Ordering::Relaxed),
+                (4000 - retained) as u64
+            );
+            assert!(output.consumer.slots() <= output.high);
+        }
+        let (mut a, mut normal) = Renderer::new(48000, 48000, 5).unwrap();
+        let (mut b, mut explicit) =
+            Renderer::new_with_backlog_recovery(48000, 48000, 5, BacklogRecovery::TrimToTarget)
+                .unwrap();
+        normal.begin_callback(512, None);
+        explicit.begin_callback(512, None);
+        for i in 0..4000 {
+            let sample = (i % 16) as f32 / 32.0;
+            a.push(sample).unwrap();
+            b.push(sample).unwrap();
+        }
+        for _ in 0..4096 {
+            assert_eq!(
+                normal.next_sample().to_bits(),
+                explicit.next_sample().to_bits()
+            );
+        }
+        assert_eq!(
+            normal.stats.discarded.load(Ordering::Relaxed),
+            explicit.stats.discarded.load(Ordering::Relaxed)
+        );
+    }
 
     #[test]
     fn starvation_evidence_excludes_startup_and_bounds_event_storage() {

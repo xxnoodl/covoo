@@ -2,7 +2,6 @@
 #[cfg(windows)]
 use crate::playout::Renderer;
 use crate::{playout::OutputStats, recording::AudioPacket};
-#[cfg(any(windows, test))]
 use std::{collections::BTreeMap, time::Instant};
 #[cfg(windows)]
 use std::{fs, sync::atomic::Ordering};
@@ -341,8 +340,8 @@ fn run(
     Err(io::Error::other("Live endpoints require Windows"))
 }
 
-#[cfg(any(windows, test))]
-pub(crate) struct OrderedInput {
+/// Bounded packet ordering shared by playback and offline replay.
+pub struct OrderedInput {
     pending: BTreeMap<u64, AudioPacket>,
     next: u64,
     position: Option<u64>,
@@ -355,9 +354,8 @@ pub(crate) struct OrderedInput {
     delivered_packets: u64,
     rate: u32,
 }
-#[cfg(any(windows, test))]
 impl OrderedInput {
-    pub(crate) fn new(rate: u32) -> Self {
+    pub fn new(rate: u32) -> Self {
         Self {
             pending: BTreeMap::new(),
             next: 0,
@@ -372,14 +370,14 @@ impl OrderedInput {
             rate,
         }
     }
-    pub(crate) fn push(&mut self, packet: AudioPacket) {
+    pub fn push(&mut self, packet: AudioPacket) {
         if packet.counter < self.next {
             self.late += 1;
         } else {
             self.pending.entry(packet.counter).or_insert(packet);
         }
     }
-    pub(crate) fn flush(&mut self, ending: bool, now: Instant, mut sample: impl FnMut(f32)) {
+    pub fn flush(&mut self, ending: bool, now: Instant, mut sample: impl FnMut(f32)) {
         while let Some((&first, packet)) = self.pending.first_key_value() {
             if first != self.next
                 && !ending
