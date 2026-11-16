@@ -1,5 +1,17 @@
 # Next session
 
+## Latest recovery transition experiment
+
+Added explicit experimental 1 ms fade-out/in with scalar anchor, no lookahead
+queue and separate synthetic-tail counts. Normal constructors still select None.
+Repeated failures cannot extend one gap's tail. Ran 60 signal cases including
+20 x 600-second synthetic runs. Large jumps drop substantially; raw loss/queue
+accounting is unchanged. Trace 400486 still has residual jumps around modeled
+frame 119178 and elsewhere. Model channel drops 15 packets there; cause of each
+jump is not established. Step positions are now recorded for investigation.
+See docs/performance/vst-recovery-transitions.md and build/vst-transition-quality-*.json.
+No reinstall, iOS build or new hardware test now. Physical tests stay deferred.
+
 ## Latest signal-quality checkpoint
 
 Backlog was saved in five local commits through 8ed9c93; not pushed. Added

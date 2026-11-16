@@ -11,7 +11,7 @@ use std::{
 };
 use windows_receiver::{
     live::OrderedInput,
-    playout::{BacklogRecovery, Renderer},
+    playout::{BacklogRecovery, RecoveryTransition, Renderer},
     recording::AudioPacket,
 };
 #[path = "support/signal_quality.rs"]
@@ -95,6 +95,17 @@ fn replay(
     )
 }
 
+#[derive(Clone, Copy)]
+struct ReplayConfig {
+    block: usize,
+    worker_ns: u64,
+    phase_frames: u64,
+    target_ms: u32,
+    policy: BacklogRecovery,
+    signal: Signal,
+    transition: RecoveryTransition,
+}
+
 fn replay_with_signal(
     arrivals: &[trace::Packet],
     block: usize,
@@ -104,11 +115,38 @@ fn replay_with_signal(
     policy: BacklogRecovery,
     signal: Signal,
 ) -> Result<serde_json::Value, Box<dyn Error>> {
+    replay_config(
+        arrivals,
+        ReplayConfig {
+            block,
+            worker_ns,
+            phase_frames,
+            target_ms,
+            policy,
+            signal,
+            transition: RecoveryTransition::None,
+        },
+    )
+}
+
+fn replay_config(
+    arrivals: &[trace::Packet],
+    config: ReplayConfig,
+) -> Result<serde_json::Value, Box<dyn Error>> {
+    let ReplayConfig {
+        block,
+        worker_ns,
+        phase_frames,
+        target_ms,
+        policy,
+        signal,
+        transition,
+    } = config;
     if !(1..=2048).contains(&block) || !(1..=80_000_000).contains(&worker_ns) {
         return Err("Model requires host blocks 1..2048 and worker intervals 1 ns..80 ms".into());
     }
     let (mut producer, mut renderer) =
-        Renderer::new_with_backlog_recovery(48000, 48000, target_ms, policy)?;
+        Renderer::new_with_recovery(48000, 48000, target_ms, policy, transition)?;
     let mut host = HostQueue::default();
     if signal != Signal::Constant {
         host.quality = Some(Quality::new(signal));
@@ -191,6 +229,9 @@ fn replay_with_signal(
     }
     Ok(serde_json::json!({
         "signal_quality":host.quality.as_ref().map(Quality::summary),
+        "recovery_transition":format!("{transition:?}"),
+        "recovery_transition_frames":renderer.stats.recovery_transition_frames.load(Ordering::Relaxed),
+        "synthetic_recovery_tail_frames":renderer.stats.synthetic_recovery_tail_frames.load(Ordering::Relaxed),
         "modeled_host_queue_peak_frames":host.peak,
         "recovery_policy":format!("{policy:?}"),
         "source_refill_queue_high_water_frames":renderer.stats.high_water.load(Ordering::Relaxed),
@@ -272,6 +313,27 @@ fn main() -> Result<(), Box<dyn Error>> {
                                 .push(replay(&arrivals, block, worker_ns, phase, target, policy)?);
                         }
                     }
+                    if signals {
+                        for policy in [
+                            BacklogRecovery::TrimToTarget,
+                            BacklogRecovery::RetainDoubleTarget,
+                        ] {
+                            for signal in [Signal::Tone, Signal::Voiced] {
+                                results.push(replay_config(
+                                    &arrivals,
+                                    ReplayConfig {
+                                        block,
+                                        worker_ns,
+                                        phase_frames: phase,
+                                        target_ms: target,
+                                        policy,
+                                        signal,
+                                        transition: RecoveryTransition::Linear1ms,
+                                    },
+                                )?);
+                            }
+                        }
+                    }
                 }
             }
         }
@@ -292,6 +354,50 @@ fn main() -> Result<(), Box<dyn Error>> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn recovery_shaping_keeps_raw_loss_counts_and_queue_bounds_visible() {
+        let arrivals = synthetic_trace(3).unwrap();
+        for policy in [
+            BacklogRecovery::TrimToTarget,
+            BacklogRecovery::RetainDoubleTarget,
+        ] {
+            let config = ReplayConfig {
+                block: 256,
+                worker_ns: 2_000_000,
+                phase_frames: 0,
+                target_ms: 5,
+                policy,
+                signal: Signal::Tone,
+                transition: RecoveryTransition::None,
+            };
+            let baseline = replay_config(&arrivals, config).unwrap();
+            let smooth = replay_config(
+                &arrivals,
+                ReplayConfig {
+                    transition: RecoveryTransition::Linear1ms,
+                    ..config
+                },
+            )
+            .unwrap();
+            for key in [
+                "source_discarded_frames",
+                "source_starvation_events",
+                "source_recovery_silence_frames",
+                "source_backlog_reset_events",
+                "modeled_host_queue_peak_frames",
+                "source_refill_queue_high_water_frames",
+            ] {
+                assert_eq!(baseline[key], smooth[key]);
+            }
+            assert!(smooth["synthetic_recovery_tail_frames"].as_u64().unwrap() > 0);
+            assert!(
+                smooth["recovery_transition_frames"].as_u64().unwrap()
+                    <= 48
+                        * (smooth["source_starvation_events"].as_u64().unwrap() * 2
+                            + smooth["source_backlog_reset_events"].as_u64().unwrap())
+            );
+        }
+    }
     #[test]
     fn signal_measurement_preserves_queue_accounting_and_bounds() {
         let arrivals = synthetic_trace(3).unwrap();

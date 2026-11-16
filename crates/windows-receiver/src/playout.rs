@@ -15,7 +15,10 @@ pub struct OutputStats {
     pub underrun_queued_frames: [AtomicU64; 32],
     pub underrun_needed_frames: [AtomicU64; 32],
     pub startup_silence_frames: AtomicU64,
+    // Raw unavailability, before optional synthetic recovery shaping.
     pub recovery_silence_frames: AtomicU64,
+    pub recovery_transition_frames: AtomicU64,
+    pub synthetic_recovery_tail_frames: AtomicU64,
     pub overruns: AtomicU64,
     pub discarded: AtomicU64,
     pub queued: AtomicU64,
@@ -60,6 +63,8 @@ pub struct Renderer {
     output_position: u64,
     started: bool,
     backlog_recovery: BacklogRecovery,
+    transition: RecoveryFade,
+    source_unavailable: bool,
     pub stats: Arc<OutputStats>,
 }
 
@@ -69,6 +74,39 @@ pub enum BacklogRecovery {
     TrimToTarget,
     RetainBoundedHeadroom,
     RetainDoubleTarget,
+}
+
+/// Explicit experimental selection; normal playback uses None.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum RecoveryTransition {
+    None,
+    Linear1ms,
+}
+
+// A scalar anchor only, never a cache of old voice. No lookahead or extra delay.
+struct RecoveryFade {
+    length: u32,
+    remaining: u32,
+    anchor: f32,
+    last: f32,
+}
+impl RecoveryFade {
+    fn arm(&mut self) {
+        self.anchor = self.last;
+        self.remaining = self.length;
+    }
+    fn apply(&mut self, sample: f32) -> (f32, bool) {
+        let active = self.remaining > 0;
+        let output = if active {
+            let weight = self.remaining as f32 / self.length as f32;
+            self.remaining -= 1;
+            self.anchor * weight + sample * (1.0 - weight)
+        } else {
+            sample
+        };
+        self.last = output;
+        (output, active)
+    }
 }
 
 impl Renderer {
@@ -90,6 +128,23 @@ impl Renderer {
         output_rate: u32,
         buffer_ms: u32,
         backlog_recovery: BacklogRecovery,
+    ) -> Result<(Producer<f32>, Self), String> {
+        Self::new_with_recovery(
+            source_rate,
+            output_rate,
+            buffer_ms,
+            backlog_recovery,
+            RecoveryTransition::None,
+        )
+    }
+
+    /// Experimental recovery selection for offline screening; default is unchanged.
+    pub fn new_with_recovery(
+        source_rate: u32,
+        output_rate: u32,
+        buffer_ms: u32,
+        backlog_recovery: BacklogRecovery,
+        transition: RecoveryTransition,
     ) -> Result<(Producer<f32>, Self), String> {
         if !(8000..=192000).contains(&source_rate)
             || !(8000..=192000).contains(&output_rate)
@@ -145,6 +200,17 @@ impl Renderer {
                 output_position: 0,
                 started: false,
                 backlog_recovery,
+                transition: RecoveryFade {
+                    length: if transition == RecoveryTransition::Linear1ms {
+                        output_rate / 1000
+                    } else {
+                        0
+                    },
+                    remaining: 0,
+                    anchor: 0.0,
+                    last: 0.0,
+                },
+                source_unavailable: false,
                 stats,
             },
         ))
@@ -200,12 +266,29 @@ impl Renderer {
 
     /// Called once per mono output frame. Never locks, allocates, logs or does I/O.
     pub fn next_sample(&mut self) -> f32 {
-        let value = self.render_sample();
+        let (value, present) = self.render_sample();
+        if present && self.source_unavailable {
+            self.transition.arm();
+        }
+        if self.started {
+            self.source_unavailable = !present;
+        }
+        let (value, transitioning) = self.transition.apply(value);
+        if transitioning {
+            self.stats
+                .recovery_transition_frames
+                .fetch_add(1, Ordering::Relaxed);
+            if !present && value != 0.0 {
+                self.stats
+                    .synthetic_recovery_tail_frames
+                    .fetch_add(1, Ordering::Relaxed);
+            }
+        }
         self.output_position = self.output_position.saturating_add(1);
         value
     }
 
-    fn render_sample(&mut self) -> f32 {
+    fn render_sample(&mut self) -> (f32, bool) {
         if self.offset == self.available && !self.refill() {
             if !self.stats.ending.load(Ordering::Relaxed) {
                 let counter = if self.started {
@@ -215,11 +298,11 @@ impl Renderer {
                 };
                 counter.fetch_add(1, Ordering::Relaxed);
             }
-            return 0.0;
+            return (0.0, false);
         }
         let sample = self.output[0][self.offset];
         self.offset += 1;
-        sample.clamp(-1.0, 1.0)
+        (sample.clamp(-1.0, 1.0), true)
     }
 
     fn refill(&mut self) -> bool {
@@ -315,6 +398,10 @@ impl Renderer {
     }
 
     fn reset(&mut self) {
+        // Repeated failures during one unavailable span must not extend a DC tail.
+        if !self.source_unavailable {
+            self.transition.arm();
+        }
         self.resampler.reset();
         self.primed = false;
         self.offset = 0;
@@ -328,6 +415,135 @@ impl Renderer {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn recovery_fade_has_fixed_length_and_does_not_replay_old_audio() {
+        let mut fade = RecoveryFade {
+            length: 48,
+            remaining: 0,
+            anchor: 0.0,
+            last: 0.25,
+        };
+        fade.arm();
+        let mut previous = 0.25;
+        for _ in 0..48 {
+            let (value, active) = fade.apply(-0.25);
+            assert!(active);
+            assert!((value - previous).abs() <= 0.5 / 48.0 + 1e-6);
+            assert!((-0.25..=0.25).contains(&value));
+            previous = value;
+        }
+        assert_eq!(fade.apply(-0.25), (-0.25, false));
+        fade.arm();
+        for _ in 0..48 {
+            fade.apply(0.0);
+        }
+        for _ in 0..1000 {
+            assert_eq!(fade.apply(0.0), (0.0, false));
+        }
+    }
+
+    #[test]
+    fn inactive_transition_preserves_clean_samples_without_lookahead() {
+        let (mut a, mut normal) = Renderer::new(48000, 48000, 5).unwrap();
+        let (mut b, mut smooth) = Renderer::new_with_recovery(
+            48000,
+            48000,
+            5,
+            BacklogRecovery::TrimToTarget,
+            RecoveryTransition::Linear1ms,
+        )
+        .unwrap();
+        for i in 0..384 {
+            let sample = (i as f32 * 0.1).sin() * 0.25;
+            a.push(sample).unwrap();
+            b.push(sample).unwrap();
+        }
+        for _ in 0..128 {
+            assert_eq!(
+                normal.next_sample().to_bits(),
+                smooth.next_sample().to_bits()
+            );
+        }
+        assert_eq!(
+            smooth
+                .stats
+                .recovery_transition_frames
+                .load(Ordering::Relaxed),
+            0
+        );
+    }
+
+    #[test]
+    fn smoothing_counts_missing_audio_even_while_synthesizing_a_short_tail() {
+        let (mut input, mut output) = Renderer::new_with_recovery(
+            48000,
+            48000,
+            5,
+            BacklogRecovery::TrimToTarget,
+            RecoveryTransition::Linear1ms,
+        )
+        .unwrap();
+        // Below the 720-frame overflow threshold, isolating one underflow.
+        for _ in 0..512 {
+            input.push(0.25).unwrap();
+        }
+        for _ in 0..4096 {
+            output.next_sample();
+        }
+        assert!(output.stats.underruns.load(Ordering::Relaxed) > 0);
+        assert!(output.stats.recovery_silence_frames.load(Ordering::Relaxed) > 48);
+        assert_eq!(
+            output
+                .stats
+                .recovery_transition_frames
+                .load(Ordering::Relaxed),
+            48
+        );
+        let tail = output
+            .stats
+            .synthetic_recovery_tail_frames
+            .load(Ordering::Relaxed);
+        assert!(tail > 0 && tail <= 48);
+        assert_eq!(output.next_sample(), 0.0);
+    }
+
+    #[test]
+    fn repeated_resets_during_one_gap_do_not_extend_synthetic_audio() {
+        let (_, mut output) = Renderer::new_with_recovery(
+            48000,
+            48000,
+            5,
+            BacklogRecovery::TrimToTarget,
+            RecoveryTransition::Linear1ms,
+        )
+        .unwrap();
+        output.started = true;
+        output.transition.last = 0.25;
+        output.reset();
+        output.source_unavailable = true;
+        for index in 0..200 {
+            output.reset();
+            let value = output.next_sample();
+            if index >= 48 {
+                assert_eq!(value, 0.0);
+            }
+        }
+        assert_eq!(
+            output
+                .stats
+                .recovery_transition_frames
+                .load(Ordering::Relaxed),
+            48
+        );
+        assert_eq!(
+            output
+                .stats
+                .synthetic_recovery_tail_frames
+                .load(Ordering::Relaxed),
+            48
+        );
+    }
 
     #[test]
     fn experimental_recovery_is_bounded_and_default_policy_is_unchanged() {

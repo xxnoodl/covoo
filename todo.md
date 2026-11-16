@@ -239,8 +239,14 @@ acceptance gates still apply before dependent work or milestone sign-off.
   voiced texture, two existing traces and 600-second repeated-burst fixtures.
   Retention candidates reduce zero-run duration but can increase sharp jumps;
   do not promote to default. See docs/performance/vst-signal-quality.md.
-- [ ] Design/test bounded recovery transitions against those signal fixtures.
+- [x] Design/test bounded recovery transitions against those signal fixtures.
   Preserve explicit loss accounting and dry archives; hardware tests deferred.
+  Experimental 1 ms fade-out/in improves screened jumps; default remains None.
+  Raw unavailability and synthetic tail counters stay separate. Residual jumps
+  remain on one trace; see docs/performance/vst-recovery-transitions.md.
+- [ ] Localize residual modeled discontinuities against channel drops, inserted
+  source gaps and resampler activity using existing traces, before promoting
+  recovery shaping. Physical listening/latency checks remain postponed.
 
 - [x] Offline two-stage VST feeder replay using production Renderer and an
   explicitly simplified host queue. Existing complete trace reproduces source

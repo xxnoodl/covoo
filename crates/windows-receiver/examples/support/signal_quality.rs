@@ -40,7 +40,9 @@ pub struct Quality {
     peak: f32,
     previous: f32,
     max_step: f32,
+    max_step_frame: Option<u64>,
     large_steps: u64,
+    step_frames: Vec<u64>,
     started: bool,
     startup_zero: u64,
     pending_zero: u64,
@@ -64,7 +66,9 @@ impl Quality {
             peak: 0.0,
             previous: 0.0,
             max_step: 0.0,
+            max_step_frame: None,
             large_steps: 0,
+            step_frames: Vec::new(),
             started: false,
             startup_zero: 0,
             pending_zero: 0,
@@ -88,8 +92,14 @@ impl Quality {
         self.peak = self.peak.max(sample.abs());
         self.clipped += u64::from(sample.abs() >= 0.999);
         let step = (sample - self.previous).abs();
-        self.max_step = self.max_step.max(step);
+        if step > self.max_step {
+            self.max_step = step;
+            self.max_step_frame = Some(self.frames - 1);
+        }
         self.large_steps += u64::from(step > 0.1);
+        if step > 0.1 && self.step_frames.len() < 32 {
+            self.step_frames.push(self.frames - 1);
+        }
         let nonzero = sample.abs() > 1e-8;
         if nonzero {
             if self.started && self.pending_zero >= 128 {
@@ -123,6 +133,7 @@ impl Quality {
             "nonfinite_samples":self.nonfinite,"clipped_samples":self.clipped,"peak":self.peak,
             "rms":if self.frames>0 {(self.squared/self.frames as f64).sqrt()} else {0.0},
             "max_absolute_sample_step":self.max_step,"steps_above_0_1":self.large_steps,
+            "max_step_output_frame":self.max_step_frame,"large_step_output_frames_first32":self.step_frames,
             "startup_zero_frames":self.startup_zero,"completed_zero_runs_at_least_128_frames":self.gaps,
             "completed_zero_run_frames":self.gap_frames,"longest_completed_zero_run_frames":self.longest_gap,
             "trailing_zero_run_frames":self.pending_zero,"active_20ms_tone_windows":self.active_tone_windows,
@@ -134,6 +145,24 @@ impl Quality {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn discontinuity_positions_are_exact_and_bounded() {
+        let mut quality = Quality::new(Signal::Tone);
+        for i in 0..200 {
+            quality.observe(if i % 2 == 0 { 0.25 } else { -0.25 });
+        }
+        let result = quality.summary();
+        assert_eq!(result["steps_above_0_1"], 200);
+        assert_eq!(result["max_step_output_frame"], 1);
+        assert_eq!(
+            result["large_step_output_frames_first32"]
+                .as_array()
+                .unwrap()
+                .len(),
+            32
+        );
+        assert_eq!(result["large_step_output_frames_first32"][31], 31);
+    }
     #[test]
     fn clean_signals_do_not_trigger_step_or_pitch_indicators() {
         for signal in [Signal::Tone, Signal::Voiced] {
