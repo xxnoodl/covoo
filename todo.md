@@ -235,6 +235,13 @@ acceptance gates still apply before dependent work or milestone sign-off.
 
 ## Implementation still required
 
+- [x] Offline candidate signal-quality screening: known tone and synthetic
+  voiced texture, two existing traces and 600-second repeated-burst fixtures.
+  Retention candidates reduce zero-run duration but can increase sharp jumps;
+  do not promote to default. See docs/performance/vst-signal-quality.md.
+- [ ] Design/test bounded recovery transitions against those signal fixtures.
+  Preserve explicit loss accounting and dry archives; hardware tests deferred.
+
 - [x] Offline two-stage VST feeder replay using production Renderer and an
   explicitly simplified host queue. Existing complete trace reproduces source
   starvation under synthetic scheduling; no buffer/pacing default changed.

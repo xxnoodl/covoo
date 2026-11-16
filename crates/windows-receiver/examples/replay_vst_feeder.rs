@@ -14,8 +14,11 @@ use windows_receiver::{
     playout::{BacklogRecovery, Renderer},
     recording::AudioPacket,
 };
+#[path = "support/signal_quality.rs"]
+mod signal_quality;
 #[path = "support/packet_trace.rs"]
 mod trace;
+use signal_quality::{Quality, Signal};
 
 #[derive(Default)]
 struct HostQueue {
@@ -24,8 +27,18 @@ struct HostQueue {
     startup_silence: u64,
     recovery_silence: u64,
     started: bool,
+    peak: usize,
+    audio: VecDeque<f32>,
+    quality: Option<Quality>,
 }
 impl HostQueue {
+    fn push(&mut self, sample: f32) {
+        self.queued += 1;
+        self.peak = self.peak.max(self.queued);
+        if self.quality.is_some() {
+            self.audio.push_back(sample);
+        }
+    }
     fn request(&self, block: usize) -> usize {
         (384usize.max(block + 256))
             .saturating_sub(self.queued)
@@ -41,6 +54,16 @@ impl HostQueue {
         } else {
             0
         };
+        if let Some(quality) = self.quality.as_mut() {
+            for i in 0..block {
+                let sample = if i < consumed {
+                    self.audio.pop_front().expect("model queue invariant")
+                } else {
+                    0.0
+                };
+                quality.observe(sample);
+            }
+        }
         self.queued -= consumed;
         if consumed < block {
             self.primed = false;
@@ -61,12 +84,36 @@ fn replay(
     target_ms: u32,
     policy: BacklogRecovery,
 ) -> Result<serde_json::Value, Box<dyn Error>> {
+    replay_with_signal(
+        arrivals,
+        block,
+        worker_ns,
+        phase_frames,
+        target_ms,
+        policy,
+        Signal::Constant,
+    )
+}
+
+fn replay_with_signal(
+    arrivals: &[trace::Packet],
+    block: usize,
+    worker_ns: u64,
+    phase_frames: u64,
+    target_ms: u32,
+    policy: BacklogRecovery,
+    signal: Signal,
+) -> Result<serde_json::Value, Box<dyn Error>> {
     if !(1..=2048).contains(&block) || !(1..=80_000_000).contains(&worker_ns) {
         return Err("Model requires host blocks 1..2048 and worker intervals 1 ns..80 ms".into());
     }
     let (mut producer, mut renderer) =
         Renderer::new_with_backlog_recovery(48000, 48000, target_ms, policy)?;
     let mut host = HostQueue::default();
+    if signal != Signal::Constant {
+        host.quality = Some(Quality::new(signal));
+    }
+    let signal_table = signal.table();
     let mut ordered = OrderedInput::new(48000);
     let origin = Instant::now();
     let mut channel = VecDeque::new();
@@ -117,7 +164,12 @@ fn replay(
                         format: MonoFormat::new(48000, packet.frames)
                             .ok_or("Invalid trace format")?,
                     },
-                    samples: vec![0.25; usize::from(packet.frames)],
+                    samples: (0..u64::from(packet.frames))
+                        .map(|offset| {
+                            signal_table
+                                [((packet.position + offset) % signal_table.len() as u64) as usize]
+                        })
+                        .collect(),
                     arrival: origin + Duration::from_nanos(packet.arrival_ns),
                 });
             }
@@ -130,15 +182,16 @@ fn replay(
             if request > 0 {
                 renderer.begin_callback(request, None);
                 for _ in 0..request {
-                    renderer.next_sample();
+                    host.push(renderer.next_sample());
                 }
                 // Queue slots count generated frames, including renderer silence.
-                host.queued += request;
             }
             next_worker += worker_ns;
         }
     }
     Ok(serde_json::json!({
+        "signal_quality":host.quality.as_ref().map(Quality::summary),
+        "modeled_host_queue_peak_frames":host.peak,
         "recovery_policy":format!("{policy:?}"),
         "source_refill_queue_high_water_frames":renderer.stats.high_water.load(Ordering::Relaxed),
         "source_recovery_ceiling_frames":renderer.stats.effective_target.load(Ordering::Relaxed)*3,
@@ -156,26 +209,68 @@ fn replay(
     }))
 }
 
-fn main() -> Result<(), Box<dyn Error>> {
-    let mut args = env::args().skip(1);
-    let path = args
-        .next()
-        .ok_or("Usage: replay_vst_feeder RECEIVER_48KHZ.csv")?;
-    if args.next().is_some() {
-        return Err("Usage: replay_vst_feeder RECEIVER_48KHZ.csv".into());
+fn synthetic_trace(seconds: u64) -> Result<Vec<trace::Packet>, Box<dyn Error>> {
+    if !(1..=3600).contains(&seconds) {
+        return Err("Synthetic seconds must be 1..3600".into());
     }
-    let arrivals = trace::parse_trace(&fs::read_to_string(path)?)?;
+    Ok((0..seconds * 200)
+        .map(|counter| {
+            let slot = counter % 400;
+            let deferred = if (200..212).contains(&slot) {
+                212 - slot
+            } else {
+                0
+            };
+            trace::Packet {
+                counter,
+                position: counter * 240,
+                capture_ns: counter * 5_000_000,
+                frames: 240,
+                arrival_ns: (counter + deferred) * 5_000_000,
+            }
+        })
+        .collect())
+}
+
+fn main() -> Result<(), Box<dyn Error>> {
+    let args: Vec<_> = env::args().skip(1).collect();
+    let (arrivals, signals) = match args.as_slice() {
+        [path] => (trace::parse_trace(&fs::read_to_string(path)?)?, false),
+        [path, flag] if flag == "--signals" => {
+            (trace::parse_trace(&fs::read_to_string(path)?)?, true)
+        }
+        [flag, seconds] if flag == "--synthetic-seconds" => {
+            (synthetic_trace(seconds.parse()?)?, true)
+        }
+        _ => {
+            return Err(
+                "Usage: replay_vst_feeder CSV [--signals] | --synthetic-seconds 1..3600".into(),
+            );
+        }
+    };
     let mut results = Vec::new();
     for block in [128, 256, 512] {
         for worker_ns in [2_000_000, 4_000_000, 8_000_000] {
             for phase in [0, block as u64 / 2] {
                 for target in [5, 8, 12, 16] {
+                    if signals && (block != 256 || worker_ns != 2_000_000 || target != 5) {
+                        continue;
+                    }
                     for policy in [
                         BacklogRecovery::TrimToTarget,
                         BacklogRecovery::RetainBoundedHeadroom,
                         BacklogRecovery::RetainDoubleTarget,
                     ] {
-                        results.push(replay(&arrivals, block, worker_ns, phase, target, policy)?);
+                        if signals {
+                            for signal in [Signal::Tone, Signal::Voiced] {
+                                results.push(replay_with_signal(
+                                    &arrivals, block, worker_ns, phase, target, policy, signal,
+                                )?);
+                            }
+                        } else {
+                            results
+                                .push(replay(&arrivals, block, worker_ns, phase, target, policy)?);
+                        }
                     }
                 }
             }
@@ -185,8 +280,9 @@ fn main() -> Result<(), Box<dyn Error>> {
         "{}",
         serde_json::to_string_pretty(&serde_json::json!({
             "model":"48 kHz packet-identity-preserving arrival chronology, production OrderedInput and Renderer, synthetic host/worker timing",
-            "arrival_order_displacements":arrivals.iter().enumerate().filter(|(i,p)| *i as u64 != p.counter).count(),
-        "limitations":"Synthetic host blocks/phases and worker intervals, not measured scheduling. No pipe/IPC delay, waveform fidelity, callback stalls, clock drift, lifecycle changes, initial handshake flush or stop/drain. Constant samples exercise queue demand. Ends at last arrival. Host queue models priming only; no measured physical latency.",
+            "arrival_order_displacements":arrivals.iter().enumerate().filter(|(i,p)|*i as u64!=p.counter).count(),
+            "signal_quality_mode":signals,
+            "limitations":"Synthetic host blocks/phases and worker intervals, not measured scheduling. No pipe/IPC delay, hardware callback stalls, clock drift, lifecycle changes, initial handshake flush or stop/drain. Signal indicators are not listening scores or physical latency. Ends at last arrival. Host queue models priming only.",
             "physical_monitoring_latency_ms":null,"results":results
         }))?
     );
@@ -196,6 +292,55 @@ fn main() -> Result<(), Box<dyn Error>> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn signal_measurement_preserves_queue_accounting_and_bounds() {
+        let arrivals = synthetic_trace(3).unwrap();
+        for policy in [
+            BacklogRecovery::TrimToTarget,
+            BacklogRecovery::RetainDoubleTarget,
+            BacklogRecovery::RetainBoundedHeadroom,
+        ] {
+            let baseline = replay(&arrivals, 256, 2_000_000, 0, 5, policy).unwrap();
+            for signal in [Signal::Tone, Signal::Voiced] {
+                let result =
+                    replay_with_signal(&arrivals, 256, 2_000_000, 0, 5, policy, signal).unwrap();
+                for key in [
+                    "source_discarded_frames",
+                    "source_starvation_events",
+                    "source_recovery_silence_frames",
+                    "host_recovery_silence_frames",
+                ] {
+                    assert_eq!(result[key], baseline[key]);
+                }
+                assert!(result["modeled_host_queue_peak_frames"].as_u64().unwrap() <= 512);
+                assert!(
+                    result["source_refill_queue_high_water_frames"]
+                        .as_u64()
+                        .unwrap()
+                        <= 24000
+                );
+                assert_eq!(result["signal_quality"]["nonfinite_samples"], 0);
+                assert_eq!(result["signal_quality"]["clipped_samples"], 0);
+            }
+        }
+    }
+    #[test]
+    fn synthetic_fixture_delays_packets_causally_and_limits_duration() {
+        assert!(synthetic_trace(0).is_err());
+        assert!(synthetic_trace(3601).is_err());
+        let packets = synthetic_trace(3).unwrap();
+        assert_eq!(packets.len(), 600);
+        assert!(packets.iter().all(|p| p.arrival_ns >= p.capture_ns));
+        assert!(
+            packets
+                .windows(2)
+                .all(|w| w[0].arrival_ns <= w[1].arrival_ns)
+        );
+        assert_eq!(
+            packets.iter().map(|p| p.arrival_ns - p.capture_ns).max(),
+            Some(60_000_000)
+        );
+    }
     #[test]
     fn reordered_trace_uses_production_ordering_without_changing_sample_identity() {
         let text = "counter,sample_position,capture_ns,frames,arrival_elapsed_ns\n0,0,100,2,1000\n1,2,200,2,3000\n2,4,300,2,2000";

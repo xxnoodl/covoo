@@ -1,5 +1,17 @@
 # Next session
 
+## Latest signal-quality checkpoint
+
+Backlog was saved in five local commits through 8ed9c93; not pushed. Added
+--signals and --synthetic-seconds modes to VST replay, with sample-carrying host
+queue and discontinuity/gap indicators. Ran 24 actual-timing signal cases and 12
+600-second synthetic cases. Retention candidates shorten zero runs but can
+increase worst sample jumps and repeated-burst step counts. Keep defaults
+unchanged. Next independent work: bounded recovery transition design/testing.
+See docs/performance/vst-signal-quality.md and build/vst-signal-quality-*.json.
+All 45 workspace, 12 example and 13 Python tests plus fmt/Clippy/locked build
+passed. No new physical test or installation; tests remain postponed.
+
 ## Latest burst-recovery comparison
 
 Reorder-aware VST replay now handles both traces, preserving packet identities
