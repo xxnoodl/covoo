@@ -92,3 +92,17 @@ No new remote CI or physical test ran. Real UDP loss, scheduler stalls, device
 changes, repeated startup, sustained stability and measured latency remain
 unaccepted. This source change is prepared for a later batched installation/test;
 it is not proof that the user's installed app has been updated.
+
+## Prepared package
+
+Source checkpoint: 9c2ea4c. Uninstalled test bundle:
+`build/covoo-vst3-burst-handoff-nov16.zip`. Its manifest records a clean source
+tree at that checkpoint. Verified all 57 file hashes, both receiver copies
+against the current release executable, inner/outer ZIP integrity and source
+revision. The packaged runtime itself passed the synthetic VST tests at
+44.1/48/96 kHz. It uses capacity 32 with normal unshaped playback.
+
+The initial PowerShell outer-archive creation encountered a file lock on the
+inner receiver.zip. After the file was available, the outer archive was rebuilt
+with Python and fully integrity-checked; no source or installed files were
+changed to work around the lock. Keep this bundle for the deferred physical batch.

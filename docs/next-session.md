@@ -11,6 +11,10 @@ Audit now shows receiver fanout drops independently of archive integrity.
 All 49 Rust, 15 example and 14 Python tests plus required fmt/Clippy/debug/release
 builds and synthetic release VST checks pass. See docs/performance/vst-burst-handoff.md.
 Next physical tests remain deferred. No new installed-app acceptance is claimed.
+Code checkpoint 9c2ea4c is local, not pushed. Verified uninstalled bundle:
+build/covoo-vst3-burst-handoff-nov16.zip, clean manifest at 9c2ea4c, 57 hashes
+and both ZIPs checked. Packaged runtime passed synthetic VST checks at three
+rates. It does not enable the experimental fade. Keep for the later test batch.
 
 ## Latest recovery transition experiment
 
