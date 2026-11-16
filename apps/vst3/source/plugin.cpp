@@ -202,6 +202,17 @@ tresult PLUGIN_API Processor::notify(IMessage* message) {
         reply->getAttributes()->setBinary("instance", id.data(), static_cast<uint32>(id.size()));
         reply->getAttributes()->setBinary("error", receiverError_.data(), static_cast<uint32>(receiverError_.size()));
         reply->getAttributes()->setBinary("address", receiverAddress_.data(), static_cast<uint32>(receiverAddress_.size()));
+        // UI-thread snapshot only. The audio callback never formats status text.
+        const auto info = source_.feedback();
+        std::string hostState;
+        if (!configured_) hostState = "Live has not configured audio processing.";
+        else if (!(info.gate & 1)) hostState = "Live has not enabled source processing.";
+        else if (!info.running) hostState = "Live is in offline processing or changing audio state.";
+        else if (info.block > 2048) hostState = "Live's audio block exceeds the supported 2048 samples.";
+        else if (info.clock == 0) hostState = "Waiting for Live's first audio callback.";
+        else hostState = "Live callback frames: " + std::to_string(info.clock) +
+            "; last block: " + std::to_string(info.block) + " samples.";
+        reply->getAttributes()->setBinary("host_state", hostState.data(), static_cast<uint32>(hostState.size()));
         sendMessage(reply);
     }
 #endif
@@ -221,6 +232,7 @@ tresult PLUGIN_API Controller::notify(IMessage* message) {
     instance = messageText(message, "instance");
     receiverError = messageText(message, "error");
     receiverAddress = messageText(message, "address");
+    hostState = messageText(message, "host_state");
     return kResultOk;
 }
 IPlugView* PLUGIN_API Controller::createView(FIDString name) {

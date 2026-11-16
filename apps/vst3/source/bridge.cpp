@@ -1,5 +1,6 @@
 #define NOMINMAX
 #include "bridge.h"
+#include "feeder_connection.h"
 #include "receiver_process.h"
 #include <windows.h>
 #include <bcrypt.h>
@@ -208,8 +209,8 @@ struct Bridge::Impl {
     }
     void session() {
         if (!authenticate()) return;
-        std::uint64_t sequence = 0, connectedGate = 0;
-        double connectedRate = 0;
+        std::uint64_t sequence = 0;
+        FeederConnection connection;
         std::uint64_t lastClock = 0;
         auto lastProgress = Clock::now();
         while (!stop.load(std::memory_order_acquire)) {
@@ -218,13 +219,7 @@ struct Bridge::Impl {
             const bool ready = info.running && info.rate >= 8000 && info.rate <= 192000 &&
                                std::floor(info.rate) == info.rate && info.block <= 2048 &&
                                Clock::now() - lastProgress < std::chrono::milliseconds(100);
-            if (!ready) source.disconnect();
-            if (info.gate != connectedGate || info.rate != connectedRate) {
-                source.disconnect();
-                if (ready) source.connect(info.rate);
-                connectedGate = ready ? info.gate : 0;
-                connectedRate = info.rate;
-            }
+            connection.update(source, info, ready);
             const auto target = std::max<std::uint32_t>(Source::primeFrames, info.block + 256);
             const auto request = ready && info.queued < target ? std::min<std::uint32_t>(512, target - info.queued) : 0;
             std::array<unsigned char, 64> feedback{};

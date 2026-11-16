@@ -1,4 +1,5 @@
 #include "source.h"
+#include "feeder_connection.h"
 #include "allocation_guard.h"
 #include <algorithm>
 #include <array>
@@ -137,9 +138,37 @@ static void concurrent() {
     std::cout << "Concurrent frames observed: " << observed << ", discarded: " << source.discardedFrames() << '\n';
 }
 
+static void stalledHostRecovery() {
+    covoo::Source source;
+    covoo::FeederConnection connection;
+    require(source.configure(48000), "recovery setup failed");
+    source.setRunning(true);
+    const auto gate = source.feedback().gate;
+    std::array<float, 512> pcm;
+    std::array<float, 128> left{}, right{};
+    connection.update(source, source.feedback(), true);
+    pcm.fill(0.25f);
+    require(source.publish(pcm.data(), 512), "initial connection failed");
+    require(render(source, left, right), "initial audio silent");
+    for (int cycle = 0; cycle < 3; ++cycle) {
+        connection.update(source, source.feedback(), false);
+        connection.update(source, source.feedback(), false);
+        require(!source.publish(pcm.data(), 512), "stalled host accepted audio");
+        require(!render(source, left, right), "stalled host replayed queued audio");
+        require(source.feedback().gate == gate, "test changed lifecycle gate");
+        connection.update(source, source.feedback(), true);
+        pcm.fill(static_cast<float>(cycle + 1) / 8);
+        require(source.publish(pcm.data(), 512), "same-gate host resume stayed disconnected");
+        require(render(source, left, right) && left[0] == pcm[0] && left == right,
+                "resume failed or replayed old audio");
+        connection.update(source, source.feedback(), true);
+        require(render(source, left, right), "healthy update invalidated queued audio");
+    }
+}
+
 int main() {
     try {
-        lifecycle(); boundsAndStarvation(); concurrent();
+        lifecycle(); boundsAndStarvation(); stalledHostRecovery(); concurrent();
         std::cout << "Source lifecycle, bounds, rates, stereo, starvation and concurrency passed.\n";
         return 0;
     } catch (const std::exception& e) {

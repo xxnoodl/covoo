@@ -139,6 +139,7 @@ void Editor::update() {
         if (!error && std::filesystem::file_time_type::clock::now() - modified > std::chrono::seconds(5))
             text = "Status is stale or the receiver has stopped.\r\n" + text;
     }
+    if (!controller_.hostState.empty()) text += "\r\n" + controller_.hostState;
     SetWindowTextW(status_, widen(text).c_str());
     const auto path = directory / L"pairing.bmp";
     if (std::filesystem::exists(path) && (!bitmap_ || imageInstance_ != controller_.instance)) {

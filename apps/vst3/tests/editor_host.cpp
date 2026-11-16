@@ -35,7 +35,13 @@ int main() {
         processor->connect(controller); controller->connect(processor);
         ProcessSetup setup{kRealtime, kSample32, 256, 48000};
         require(processor->setupProcessing(setup) == kResultOk && processor->setActive(true) == kResultOk, "source activation failed");
+        controller->receiverCommand("status");
+        require(controller->hostState == "Live has not enabled source processing.",
+                "disabled processing diagnostic missing");
         processor->setProcessing(true);
+        controller->receiverCommand("status");
+        require(controller->hostState == "Waiting for Live's first audio callback.",
+                "first callback diagnostic missing");
         auto* view = controller->createView(ViewType::kEditor);
         require(view != nullptr, "editor missing");
         auto parent = CreateWindowExW(0, L"STATIC", L"covoo isolated editor test", WS_OVERLAPPEDWINDOW,

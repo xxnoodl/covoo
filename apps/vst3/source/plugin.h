@@ -55,7 +55,7 @@ public:
     Steinberg::IPlugView* PLUGIN_API createView(Steinberg::FIDString) override;
     Steinberg::tresult PLUGIN_API notify(Steinberg::Vst::IMessage*) override;
     void receiverCommand(const char* command, const std::string& address = "");
-    std::string instance, receiverError, receiverAddress;
+    std::string instance, receiverError, receiverAddress, hostState;
 };
 
 } // namespace covoo
