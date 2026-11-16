@@ -1,5 +1,17 @@
 # Next session
 
+## Latest bounded handoff update
+
+Historical 400486 report has 18 VST fanout drops despite complete archive.
+Counterfactual replay capacity 16 drops 15 packets and inserts gaps; capacity
+32 removes these and all residual >0.1 steps when paired with experimental fade.
+Implemented production feeder capacity 32, keeping age check, worker batch size,
+targets and normal unshaped playback unchanged. Fade remains disabled by default.
+Audit now shows receiver fanout drops independently of archive integrity.
+All 49 Rust, 15 example and 14 Python tests plus required fmt/Clippy/debug/release
+builds and synthetic release VST checks pass. See docs/performance/vst-burst-handoff.md.
+Next physical tests remain deferred. No new installed-app acceptance is claimed.
+
 ## Latest recovery transition experiment
 
 Added explicit experimental 1 ms fade-out/in with scalar anchor, no lookahead

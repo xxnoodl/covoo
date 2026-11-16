@@ -12,6 +12,7 @@ use std::{
 use windows_receiver::{
     live::OrderedInput,
     playout::{BacklogRecovery, RecoveryTransition, Renderer},
+    plugin_bridge::FEEDER_PACKET_CAPACITY,
     recording::AudioPacket,
 };
 #[path = "support/signal_quality.rs"]
@@ -104,6 +105,7 @@ struct ReplayConfig {
     policy: BacklogRecovery,
     signal: Signal,
     transition: RecoveryTransition,
+    channel_capacity: usize,
 }
 
 fn replay_with_signal(
@@ -125,8 +127,16 @@ fn replay_with_signal(
             policy,
             signal,
             transition: RecoveryTransition::None,
+            channel_capacity: FEEDER_PACKET_CAPACITY,
         },
     )
+}
+
+fn record_event(events: &mut Vec<serde_json::Value>, count: &mut u64, event: serde_json::Value) {
+    *count += 1;
+    if events.len() < 128 {
+        events.push(event);
+    }
 }
 
 fn replay_config(
@@ -141,9 +151,13 @@ fn replay_config(
         policy,
         signal,
         transition,
+        channel_capacity,
     } = config;
-    if !(1..=2048).contains(&block) || !(1..=80_000_000).contains(&worker_ns) {
-        return Err("Model requires host blocks 1..2048 and worker intervals 1 ns..80 ms".into());
+    if !(1..=2048).contains(&block)
+        || !(1..=80_000_000).contains(&worker_ns)
+        || !(1..=64).contains(&channel_capacity)
+    {
+        return Err("Model requires host blocks 1..2048, worker intervals 1 ns..80 ms and packet capacity 1..64".into());
     }
     let (mut producer, mut renderer) =
         Renderer::new_with_recovery(48000, 48000, target_ms, policy, transition)?;
@@ -159,8 +173,13 @@ fn replay_config(
     let mut next_worker = 0;
     let mut host_frames = phase_frames;
     let mut queue_drops = 0u64;
+    let mut queue_drop_frames = 0u64;
     let mut stale = 0u64;
     let mut source_overflow = 0u64;
+    let mut events = Vec::new();
+    let mut event_count = 0u64;
+    let mut generated_frames = 0u64;
+    let mut channel_peak = 0usize;
     let end = arrivals.last().ok_or("Empty trace")?.arrival_ns;
     loop {
         let next_host = host_frames * 1_000_000_000 / 48000;
@@ -171,10 +190,18 @@ fn replay_config(
         }
         // Deterministic tie order: arrivals, host callback, worker exchange.
         while next_packet < arrivals.len() && arrivals[next_packet].arrival_ns <= now {
-            if channel.len() == 16 {
+            if channel.len() == channel_capacity {
                 queue_drops += 1;
+                let packet = arrivals[next_packet];
+                queue_drop_frames += u64::from(packet.frames);
+                record_event(
+                    &mut events,
+                    &mut event_count,
+                    serde_json::json!({"kind":"channel_drop","modeled_ns":now,"counter":packet.counter,"source_position":packet.position,"frames":packet.frames}),
+                );
             } else {
                 channel.push_back(arrivals[next_packet]);
+                channel_peak = channel_peak.max(channel.len());
             }
             next_packet += 1;
         }
@@ -211,23 +238,53 @@ fn replay_config(
                     arrival: origin + Duration::from_nanos(packet.arrival_ns),
                 });
             }
+            let before = ordered.diagnostics();
             ordered.flush(false, origin + Duration::from_nanos(now), |sample| {
                 if producer.push(sample).is_err() {
                     source_overflow += 1;
                 }
             });
+            let after = ordered.diagnostics();
+            if before.missing_frames != after.missing_frames
+                || before.omitted_frames != after.omitted_frames
+            {
+                record_event(
+                    &mut events,
+                    &mut event_count,
+                    serde_json::json!({"kind":"ordering_gap","modeled_ns":now,"inserted_frames":after.missing_frames-before.missing_frames,"omitted_frames":after.omitted_frames-before.omitted_frames}),
+                );
+            }
             let request = host.request(block);
             if request > 0 {
+                let before_under = renderer.stats.underruns.load(Ordering::Relaxed);
+                let before_over = renderer.stats.overruns.load(Ordering::Relaxed);
+                let first_frame = generated_frames;
+                let queue_ahead = host.queued;
                 renderer.begin_callback(request, None);
                 for _ in 0..request {
                     host.push(renderer.next_sample());
+                    generated_frames += 1;
+                }
+                let under = renderer.stats.underruns.load(Ordering::Relaxed) - before_under;
+                let over = renderer.stats.overruns.load(Ordering::Relaxed) - before_over;
+                if under > 0 || over > 0 {
+                    record_event(
+                        &mut events,
+                        &mut event_count,
+                        serde_json::json!({"kind":"resampler_recovery","modeled_ns":now,"generated_frame_start":first_frame,"generated_frames":request,"host_queue_ahead_frames":queue_ahead,"starvation_events":under,"backlog_resets":over}),
+                    );
                 }
                 // Queue slots count generated frames, including renderer silence.
             }
             next_worker += worker_ns;
         }
     }
+    let ordering = ordered.diagnostics();
     Ok(serde_json::json!({
+        "packet_channel_capacity":channel_capacity,"channel_peak_packets":channel_peak,
+        "events_first128":events,"event_count":event_count,
+        "ordering_inserted_gap_frames":ordering.missing_frames,"ordering_missing_packets":ordering.missing_packets,
+        "ordering_omitted_frames":ordering.omitted_frames,"ordering_late_packets":ordering.late_packets,
         "signal_quality":host.quality.as_ref().map(Quality::summary),
         "recovery_transition":format!("{transition:?}"),
         "recovery_transition_frames":renderer.stats.recovery_transition_frames.load(Ordering::Relaxed),
@@ -245,7 +302,7 @@ fn replay_config(
         "source_recovery_silence_frames":renderer.stats.recovery_silence_frames.load(Ordering::Relaxed),
         "host_startup_silence_frames":host.startup_silence,
         "host_recovery_silence_frames":host.recovery_silence,
-        "channel_dropped_packets":queue_drops,"stale_packets":stale,
+        "channel_dropped_packets":queue_drops,"channel_dropped_source_frames":queue_drop_frames,"stale_packets":stale,
         "source_queue_overflow_frames":source_overflow
     }))
 }
@@ -275,17 +332,30 @@ fn synthetic_trace(seconds: u64) -> Result<Vec<trace::Packet>, Box<dyn Error>> {
 
 fn main() -> Result<(), Box<dyn Error>> {
     let args: Vec<_> = env::args().skip(1).collect();
-    let (arrivals, signals) = match args.as_slice() {
-        [path] => (trace::parse_trace(&fs::read_to_string(path)?)?, false),
-        [path, flag] if flag == "--signals" => {
-            (trace::parse_trace(&fs::read_to_string(path)?)?, true)
-        }
-        [flag, seconds] if flag == "--synthetic-seconds" => {
-            (synthetic_trace(seconds.parse()?)?, true)
-        }
+    let (arrivals, signals, channel_capacity) = match args.as_slice() {
+        [path] => (
+            trace::parse_trace(&fs::read_to_string(path)?)?,
+            false,
+            FEEDER_PACKET_CAPACITY,
+        ),
+        [path, flag] if flag == "--signals" => (
+            trace::parse_trace(&fs::read_to_string(path)?)?,
+            true,
+            FEEDER_PACKET_CAPACITY,
+        ),
+        [flag, seconds] if flag == "--synthetic-seconds" => (
+            synthetic_trace(seconds.parse()?)?,
+            true,
+            FEEDER_PACKET_CAPACITY,
+        ),
+        [path, mode, flag, size] if mode == "--signals" && flag == "--channel-capacity" => (
+            trace::parse_trace(&fs::read_to_string(path)?)?,
+            true,
+            size.parse::<usize>()?,
+        ),
         _ => {
             return Err(
-                "Usage: replay_vst_feeder CSV [--signals] | --synthetic-seconds 1..3600".into(),
+                "Usage: replay_vst_feeder CSV [--signals [--channel-capacity 1..64]] | --synthetic-seconds 1..3600".into(),
             );
         }
     };
@@ -304,8 +374,18 @@ fn main() -> Result<(), Box<dyn Error>> {
                     ] {
                         if signals {
                             for signal in [Signal::Tone, Signal::Voiced] {
-                                results.push(replay_with_signal(
-                                    &arrivals, block, worker_ns, phase, target, policy, signal,
+                                results.push(replay_config(
+                                    &arrivals,
+                                    ReplayConfig {
+                                        block,
+                                        worker_ns,
+                                        phase_frames: phase,
+                                        target_ms: target,
+                                        policy,
+                                        signal,
+                                        transition: RecoveryTransition::None,
+                                        channel_capacity,
+                                    },
                                 )?);
                             }
                         } else {
@@ -329,6 +409,7 @@ fn main() -> Result<(), Box<dyn Error>> {
                                         policy,
                                         signal,
                                         transition: RecoveryTransition::Linear1ms,
+                                        channel_capacity,
                                     },
                                 )?);
                             }
@@ -355,6 +436,74 @@ fn main() -> Result<(), Box<dyn Error>> {
 mod tests {
     use super::*;
     #[test]
+    fn bounded_burst_handoff_avoids_gaps_without_unbounded_queue_growth() {
+        let arrivals: Vec<_> = (0..40)
+            .map(|i| (if i < 25 { 120_000_000 } else { i * 5_000_000 }, 240))
+            .collect();
+        let packets = packets(&arrivals);
+        let config = ReplayConfig {
+            block: 256,
+            worker_ns: 2_000_000,
+            phase_frames: 0,
+            target_ms: 5,
+            policy: BacklogRecovery::TrimToTarget,
+            signal: Signal::Tone,
+            transition: RecoveryTransition::None,
+            channel_capacity: 16,
+        };
+        let legacy = replay_config(&packets, config).unwrap();
+        let current = replay_config(
+            &packets,
+            ReplayConfig {
+                channel_capacity: FEEDER_PACKET_CAPACITY,
+                ..config
+            },
+        )
+        .unwrap();
+        assert!(legacy["channel_dropped_packets"].as_u64().unwrap() > 0);
+        assert!(legacy["ordering_inserted_gap_frames"].as_u64().unwrap() > 0);
+        assert_eq!(current["channel_dropped_packets"], 0);
+        assert_eq!(current["ordering_inserted_gap_frames"], 0);
+        assert!(current["channel_peak_packets"].as_u64().unwrap() <= FEEDER_PACKET_CAPACITY as u64);
+        assert_eq!(
+            current["modeled_host_queue_peak_frames"],
+            legacy["modeled_host_queue_peak_frames"]
+        );
+        assert!(
+            current["source_refill_queue_high_water_frames"]
+                .as_u64()
+                .unwrap()
+                <= 24000
+        );
+        assert!(
+            legacy["events_first128"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .any(|e| e["kind"] == "ordering_gap")
+        );
+        assert!(
+            replay_config(
+                &packets,
+                ReplayConfig {
+                    channel_capacity: 0,
+                    ..config
+                }
+            )
+            .is_err()
+        );
+        assert!(
+            replay_config(
+                &packets,
+                ReplayConfig {
+                    channel_capacity: 65,
+                    ..config
+                }
+            )
+            .is_err()
+        );
+    }
+    #[test]
     fn recovery_shaping_keeps_raw_loss_counts_and_queue_bounds_visible() {
         let arrivals = synthetic_trace(3).unwrap();
         for policy in [
@@ -369,6 +518,7 @@ mod tests {
                 policy,
                 signal: Signal::Tone,
                 transition: RecoveryTransition::None,
+                channel_capacity: FEEDER_PACKET_CAPACITY,
             };
             let baseline = replay_config(&arrivals, config).unwrap();
             let smooth = replay_config(

@@ -12,6 +12,17 @@ spec.loader.exec_module(audit)
 
 
 class LatencyAuditTests(unittest.TestCase):
+    def test_receiver_plugin_drops_remain_visible_with_complete_archive(self):
+        result = audit.audit(receiver={'pcm_continuity_verified': True, 'plugin_queue_drops': 18},
+                             plugin={'packet_channel_capacity': 32})
+        self.assertTrue(result['archive']['pcm_continuity_verified'])
+        self.assertEqual(result['receiver_plugin_route']['plugin_queue_drops'], 18)
+        self.assertEqual(result['plugin']['packet_channel_capacity'], 32)
+        self.assertIsNone(result['plugin']['packet_age_limit_ms'])
+        self.assertEqual(len(result['plugin_findings']), 1)
+        self.assertIn('fanout queue drops', result['plugin_findings'][0])
+        self.assertIsNone(result['physical_monitoring_latency_ms'])
+
     def test_complete_archive_does_not_hide_silent_or_starved_plugin(self):
         result = audit.audit(receiver={'pcm_continuity_verified': True}, plugin={
             'host_clock_frames': 0, 'source_starvation_events': 5,

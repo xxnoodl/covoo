@@ -1,6 +1,10 @@
 //! Opt-in local VST feeder. No OS endpoint, phone trust or archive ownership.
 use std::{io, path::PathBuf};
 
+/// Per-take bounded handoff; packet age remains separately limited to 80 ms.
+pub const FEEDER_PACKET_CAPACITY: usize = 32;
+pub const FEEDER_PACKET_MAX_AGE_MS: u64 = 80;
+
 #[derive(Clone)]
 pub struct LiveStatus(std::sync::Arc<std::sync::Mutex<(std::time::Instant, String)>>);
 impl LiveStatus {
@@ -330,7 +334,7 @@ mod windows {
         pub fn start(id: &str, rate: u32, path: PathBuf) -> io::Result<Self> {
             let stop = Arc::new(AtomicBool::new(false));
             let pipe = connect(id, &stop)?;
-            let (sender, receiver) = mpsc::sync_channel(16);
+            let (sender, receiver) = mpsc::sync_channel(FEEDER_PACKET_CAPACITY);
             let stopping = stop.clone();
             let status = Arc::new(std::sync::Mutex::new((
                 Instant::now(),
@@ -341,6 +345,7 @@ mod windows {
                 .name("covoo-vst-feeder".into())
                 .spawn(move || {
                     let mut report = serde_json::json!({"kind":"vst3 feeder","source_rate":rate,
+                    "packet_channel_capacity":FEEDER_PACKET_CAPACITY,"packet_age_limit_ms":FEEDER_PACKET_MAX_AGE_MS,
                     "physical_latency":"not measured","error":null});
                     if let Err(error) =
                         feed(pipe, rate, receiver, &stopping, &mut report, &live_status)
@@ -441,7 +446,8 @@ mod windows {
                     match receiver.try_recv() {
                         Ok(packet)
                             if info.running
-                                && packet.arrival.elapsed() <= Duration::from_millis(80) =>
+                                && packet.arrival.elapsed()
+                                    <= Duration::from_millis(FEEDER_PACKET_MAX_AGE_MS) =>
                         {
                             ordered.push(packet)
                         }

@@ -106,7 +106,8 @@ Accept waits poll the stop flag; every authenticated exchange has a 250 ms
 deadline. Control-thread deactivation joins the worker before freeing Source.
 No handles or buffers are freed while their operations are pending.
 
-The receiver has an independent 16-packet channel and feeder worker per take.
+The receiver has an independent 32-packet channel and feeder worker per take
+(increased from 16 after the November 16 burst investigation).
 UDP fanout uses try_send; a stalled/failed plug-in cannot block archive or endpoint
 sinks. The worker orders input with the existing bounded OrderedInput model and
 adapts it using the existing sinc Renderer, paced by host pull demand. It requests

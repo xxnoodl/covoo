@@ -63,7 +63,8 @@ def audit(log=None, receiver=None, phone=None, plugin=None):
                 'network_dropped_frames', 'network_send_errors']
         result['phone'] = {k: phone.get(k) for k in keys}
     if plugin is not None:
-        keys = ['source_rate', 'host_rate', 'host_clock_frames', 'host_queued_frames',
+        keys = ['packet_channel_capacity', 'packet_age_limit_ms',
+                'source_rate', 'host_rate', 'host_clock_frames', 'host_queued_frames',
                 'host_block_frames', 'host_feedback_observations',
                 'host_not_ready_observations', 'host_readiness_changes',
                 'host_lifetime_silence_frames', 'host_lifetime_discarded_frames',
@@ -98,6 +99,11 @@ def audit(log=None, receiver=None, phone=None, plugin=None):
                     'silence_frames_inserted', 'leading_frames_not_received',
                     'trailing_frames_not_received', 'error']
             result['archive'] = {k: receiver.get(k) for k in keys}
+            result['receiver_plugin_route'] = {k: receiver.get(k) for k in
+                                                ['plugin_queue_drops', 'plugin_start_error']}
+            drops = receiver.get('plugin_queue_drops')
+            if type(drops) in (int, float) and drops > 0:
+                findings.append('Receiver reported VST fanout queue drops; archive continuity does not cover playback delivery.')
             result['archive_note'] = (
                 'Archive continuity is separate from VST playback. These reports were supplied '
                 'by the caller; matching take identity and phone/PC PCM require separate verification.')

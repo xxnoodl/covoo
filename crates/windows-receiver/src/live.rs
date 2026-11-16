@@ -340,6 +340,16 @@ fn run(
     Err(io::Error::other("Live endpoints require Windows"))
 }
 
+/// Read-only snapshot of input ordering, not an end-to-end loss measurement.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub struct OrderingDiagnostics {
+    pub missing_frames: u64,
+    pub missing_packets: u64,
+    pub omitted_frames: u64,
+    pub late_packets: u64,
+    pub pending_packets: usize,
+}
+
 /// Bounded packet ordering shared by playback and offline replay.
 pub struct OrderedInput {
     pending: BTreeMap<u64, AudioPacket>,
@@ -355,6 +365,15 @@ pub struct OrderedInput {
     rate: u32,
 }
 impl OrderedInput {
+    pub fn diagnostics(&self) -> OrderingDiagnostics {
+        OrderingDiagnostics {
+            missing_frames: self.missing_frames,
+            missing_packets: self.missing_packets,
+            omitted_frames: self.omitted_frames,
+            late_packets: self.late,
+            pending_packets: self.pending.len(),
+        }
+    }
     pub fn new(rate: u32) -> Self {
         Self {
             pending: BTreeMap::new(),

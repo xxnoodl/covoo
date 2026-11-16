@@ -244,9 +244,16 @@ acceptance gates still apply before dependent work or milestone sign-off.
   Experimental 1 ms fade-out/in improves screened jumps; default remains None.
   Raw unavailability and synthetic tail counters stay separate. Residual jumps
   remain on one trace; see docs/performance/vst-recovery-transitions.md.
-- [ ] Localize residual modeled discontinuities against channel drops, inserted
+- [x] Localize residual modeled discontinuities against channel drops, inserted
   source gaps and resampler activity using existing traces, before promoting
   recovery shaping. Physical listening/latency checks remain postponed.
+  Historical report confirms 18 fanout drops; model reproduces 15. Capacity-32
+  intervention eliminates model channel holes and residual screened jumps with
+  experimental fade. Normal feeder capacity is now 32; fade remains disabled.
+  See docs/performance/vst-burst-handoff.md for loss/latency tradeoffs.
+- [ ] Batched physical validation of the 32-packet feeder handoff: same setup,
+  short bursty takes and later long stability run; inspect actual fanout drops,
+  backlog discard/recovery, effects recording and route changes. Deferred by user.
 
 - [x] Offline two-stage VST feeder replay using production Renderer and an
   explicitly simplified host queue. Existing complete trace reproduces source
