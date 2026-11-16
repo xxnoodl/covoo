@@ -130,6 +130,24 @@ attach to the explicitly selected still-active instance again.
 
 ## Primary references reviewed
 
+### Feeder report observations
+
+The receiver reads existing CVF1 fields for host block size and cumulative
+Source silence/discarded frames. Reports name those two counters
+`host_lifetime_silence_frames` and `host_lifetime_discarded_frames`: they cover
+the current processor lifetime, not only this take, and silence includes startup.
+The last host snapshot is an observation, not proof of final hardware playback.
+`host_feedback_observations`, `host_not_ready_observations` and
+`host_readiness_changes` count worker feedback exchanges, not milliseconds or
+packet loss. A not-ready observation does not distinguish pause from offline,
+invalid format or absent callbacks. No wire layout changes were made.
+
+`source_starvation_events` and `source_discarded_frames` now sum observed
+resampler counters across all adapter epochs within this take, including rate,
+gate and readiness changes. They previously retained only the last adapter's
+values. Host counters remain separate from source counters, archive continuity
+and physical latency. Older reports lacking these fields mean unknown, not zero.
+
 - [Microsoft pipe security](https://learn.microsoft.com/en-us/windows/win32/ipc/named-pipe-security-and-access-rights).
 - [CreateNamedPipe flags](https://learn.microsoft.com/en-us/windows/win32/api/winbase/nf-winbase-createnamedpipea).
 - [Named pipe client behavior](https://learn.microsoft.com/en-us/windows/win32/ipc/named-pipe-client).

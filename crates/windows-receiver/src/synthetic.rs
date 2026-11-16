@@ -296,6 +296,13 @@ fn smoke_inner(plugin: Option<&str>) -> io::Result<()> {
                 let bridge: serde_json::Value =
                     serde_json::from_slice(&std::fs::read(&bridge_path)?)?;
                 assert!(bridge["error"].is_null(), "{bridge}");
+                let observations = bridge["host_feedback_observations"].as_u64().unwrap();
+                assert!(observations > 0);
+                assert!(bridge["host_not_ready_observations"].as_u64().unwrap() <= observations);
+                assert!(bridge["host_readiness_changes"].as_u64().unwrap() < observations);
+                assert!(bridge["host_block_frames"].as_u64().unwrap() <= 2048);
+                assert!(bridge["host_lifetime_silence_frames"].is_u64());
+                assert!(bridge["host_lifetime_discarded_frames"].is_u64());
                 assert!(
                     bridge["sent_host_frames_including_silence"]
                         .as_u64()

@@ -242,6 +242,9 @@ mod windows {
         running: bool,
         queued: u32,
         clock: u64,
+        silence: u64,
+        discarded: u64,
+        block: u32,
     }
     fn feedback(bytes: &[u8; 64]) -> io::Result<Feedback> {
         let rate = f64::from_le_bytes(bytes[16..24].try_into().unwrap());
@@ -266,7 +269,27 @@ mod windows {
             running: running == 1,
             queued,
             clock: u64::from_le_bytes(bytes[24..32].try_into().unwrap()),
+            silence: u64::from_le_bytes(bytes[40..48].try_into().unwrap()),
+            discarded: u64::from_le_bytes(bytes[48..56].try_into().unwrap()),
+            block: u32::from_le_bytes(bytes[60..64].try_into().unwrap()),
         })
+    }
+
+    #[derive(Default)]
+    struct AdapterTotals {
+        previous: [u64; 2],
+        total: [u64; 2],
+    }
+    impl AdapterTotals {
+        fn new_epoch(&mut self) {
+            self.previous = [0; 2];
+        }
+        fn observe(&mut self, starvation: u64, discarded: u64) {
+            for (index, value) in [starvation, discarded].into_iter().enumerate() {
+                self.total[index] += value.saturating_sub(self.previous[index]);
+                self.previous[index] = value;
+            }
+        }
     }
 
     pub fn probe(id: &str) -> io::Result<serde_json::Value> {
@@ -371,6 +394,11 @@ mod windows {
         let mut stale = 0u64;
         let mut overflow = 0u64;
         let mut sent = 0u64;
+        let mut totals = AdapterTotals::default();
+        let mut observations = 0u64;
+        let mut not_ready = 0u64;
+        let mut readiness_changes = 0u64;
+        let mut previous_ready = None;
         let result = (|| -> io::Result<()> {
             while !stop.load(Ordering::Acquire) {
                 let mut bytes = [0; 64];
@@ -382,9 +410,22 @@ mod windows {
                     Instant::now() + Duration::from_millis(500),
                 )?;
                 let info = feedback(&bytes)?;
+                observations += 1;
+                not_ready += u64::from(!info.running);
+                if previous_ready.is_some_and(|ready| ready != info.running) {
+                    readiness_changes += 1;
+                }
+                previous_ready = Some(info.running);
+                report["host_feedback_observations"] = observations.into();
+                report["host_not_ready_observations"] = not_ready.into();
+                report["host_readiness_changes"] = readiness_changes.into();
+                report["host_block_frames"] = info.block.into();
+                report["host_lifetime_silence_frames"] = info.silence.into();
+                report["host_lifetime_discarded_frames"] = info.discarded.into();
                 let key = (info.gate, info.rate, info.running);
                 if state != Some(key) {
                     adapter = None;
+                    totals.new_epoch();
                     ordered = OrderedInput::new(source_rate);
                     while receiver.try_recv().is_ok() {
                         stale += 1;
@@ -434,10 +475,12 @@ mod windows {
                         .effective_target
                         .load(Ordering::Relaxed)
                         .into();
-                    report["source_starvation_events"] =
-                        renderer.stats.underruns.load(Ordering::Relaxed).into();
-                    report["source_discarded_frames"] =
-                        renderer.stats.discarded.load(Ordering::Relaxed).into();
+                    totals.observe(
+                        renderer.stats.underruns.load(Ordering::Relaxed),
+                        renderer.stats.discarded.load(Ordering::Relaxed),
+                    );
+                    report["source_starvation_events"] = totals.total[0].into();
+                    report["source_discarded_frames"] = totals.total[1].into();
                     report["asrc_adjustment_ppm"] =
                         (renderer.stats.ratio_ppm.load(Ordering::Relaxed) as i64 - 10000).into();
                 }
@@ -480,6 +523,35 @@ mod windows {
     #[cfg(test)]
     mod tests {
         use super::*;
+        #[test]
+        fn adapter_totals_survive_pause_and_rate_epochs_without_double_counting() {
+            let mut totals = AdapterTotals::default();
+            totals.observe(3, 240);
+            totals.observe(3, 240);
+            totals.observe(4, 480);
+            totals.new_epoch();
+            totals.observe(0, 0);
+            totals.observe(2, 128);
+            assert_eq!(totals.total, [6, 608]);
+            totals.new_epoch();
+            totals.observe(1, 0);
+            assert_eq!(totals.total, [7, 608]);
+        }
+        #[test]
+        fn feedback_preserves_host_counters_separately_from_queue_and_clock() {
+            let mut bytes = [0; 64];
+            bytes[..4].copy_from_slice(b"CVF1");
+            bytes[16..24].copy_from_slice(&48000f64.to_le_bytes());
+            bytes[24..32].copy_from_slice(&123456u64.to_le_bytes());
+            bytes[32..36].copy_from_slice(&384u32.to_le_bytes());
+            bytes[40..48].copy_from_slice(&4096u64.to_le_bytes());
+            bytes[48..56].copy_from_slice(&8192u64.to_le_bytes());
+            bytes[60..64].copy_from_slice(&256u32.to_le_bytes());
+            let info = feedback(&bytes).unwrap();
+            assert_eq!((info.clock, info.queued, info.block), (123456, 384, 256));
+            assert_eq!((info.silence, info.discarded), (4096, 8192));
+            assert!(!info.running);
+        }
         #[test]
         fn feedback_rejects_unbounded_requests_and_invalid_formats() {
             let mut bytes = [0; 64];
