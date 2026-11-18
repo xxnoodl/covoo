@@ -30,6 +30,7 @@ struct PhoneMicApp: App {
                         Toggle("Remember receiver", isOn: Binding(
                             get: { capture.receiverRemembered },
                             set: { capture.setReceiverRemembered($0) }))
+                            .toggleStyle(.switch)
                             .accessibilityIdentifier("pairing.remember")
                             .disabled(capture.state.recording || capture.requesting)
                         if let error = capture.pairingSaveError {

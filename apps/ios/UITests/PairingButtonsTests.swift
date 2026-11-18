@@ -2,6 +2,19 @@ import XCTest
 
 final class PairingButtonsTests: XCTestCase {
     @MainActor
+    private func setRemember(_ toggle: XCUIElement, to enabled: Bool, app: XCUIApplication) {
+        let expected = enabled ? "1" : "0"
+        if toggle.value as? String != expected {
+            // SwiftUI exposes the labeled row as the switch element. Target
+            // its trailing control instead of the center of the label.
+            toggle.coordinate(withNormalizedOffset: CGVector(dx: 0.95, dy: 0.5)).tap()
+        }
+        let changed = NSPredicate(format: "value == %@", expected)
+        let result = XCTWaiter.wait(for: [XCTNSPredicateExpectation(predicate: changed, object: toggle)], timeout: 5)
+        let error = app.staticTexts["pairing.saveError"]
+        XCTAssertEqual(result, .completed, error.exists ? error.label : app.debugDescription)
+    }
+    @MainActor
     func testScannerCanBeCancelledWithoutConnecting() {
         let app = XCUIApplication()
         app.launch()
@@ -36,7 +49,7 @@ final class PairingButtonsTests: XCTestCase {
         let field = app.secureTextFields["pairing.link"]
         field.tap()
         field.typeText(link + "\n")
-        remember.tap()
+        setRemember(remember, to: true, app: app)
         XCTAssertEqual(remember.value as? String, "1")
         // If tapping Remember also fires Forget, nothing survives app restart.
         app.terminate()
@@ -49,10 +62,10 @@ final class PairingButtonsTests: XCTestCase {
         XCTAssertTrue(status.waitForExistence(timeout: 5))
         XCTAssertTrue(status.label.hasPrefix("Saved pairing loaded."), status.label)
         app.swipeDown()
-        restored.tap()
+        setRemember(restored, to: false, app: app)
         XCTAssertEqual(restored.value as? String, "0")
         XCTAssertFalse((app.secureTextFields["pairing.link"].value as? String ?? "").isEmpty)
-        restored.tap()
+        setRemember(restored, to: true, app: app)
         XCTAssertEqual(restored.value as? String, "1")
         app.buttons["pairing.forget"].tap()
         app.terminate()
