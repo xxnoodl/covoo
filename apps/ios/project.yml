@@ -21,6 +21,8 @@ targets:
       path: Generated/Info.plist
       properties:
         CFBundleDisplayName: $(PRODUCT_DISPLAY_NAME)
+        CFBundleShortVersionString: $(MARKETING_VERSION)
+        CFBundleVersion: $(CURRENT_PROJECT_VERSION)
         NSMicrophoneUsageDescription: Record your microphone to a local test WAV file.
         NSCameraUsageDescription: Scan the pairing QR code shown by covoo on your PC. No photos or video are saved.
         UIBackgroundModes: [audio]

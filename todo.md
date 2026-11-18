@@ -58,6 +58,13 @@ acceptance gates still apply before dependent work or milestone sign-off.
 
 ## Required acceptance tests, scheduled later
 
+- [x] November 18 updated iOS source: macOS simulator/device builds, all 12 unit
+  tests and both UI tests passed at c1c5df8. Unsigned IPA downloaded and inspected;
+  see docs/testing/results/ios-2026-11-18.md. No signed-device acceptance.
+- [ ] Correct iOS version propagation: generated IPA reports 1.0/build 1 despite
+  project.yml requesting 0.1.0/build 2. Use recorded run/revision/hash to identify
+  the November 18 artifact; older build-2 instructions do not identify it.
+
 - [x] November 16 integrated Live workflow: in response to the post-effect
   recording and saved-project reopen checklist, user confirms everything works.
   Accept reverb recorded via Post FX and remembered reconnect/stream after

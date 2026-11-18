@@ -4,7 +4,7 @@ set -euo pipefail
 cd "$(dirname "$0")/.."
 app=build/device/Build/Products/Debug-iphoneos/PhoneMic.app
 python3 - "$app" <<'PY'
-import pathlib, plistlib, sys
+import pathlib, plistlib, re, sys
 app = pathlib.Path(sys.argv[1])
 with (app / 'Info.plist').open('rb') as stream:
     info = plistlib.load(stream)
@@ -12,6 +12,13 @@ if info.get('CFBundleSupportedPlatforms') != ['iPhoneOS']:
     sys.exit('Expected a device app, not a simulator app')
 if not (app / info['CFBundleExecutable']).is_file():
     sys.exit('App executable is missing')
+project = pathlib.Path('apps/ios/project.yml').read_text()
+for key, setting in [('CFBundleShortVersionString', 'MARKETING_VERSION'),
+                     ('CFBundleVersion', 'CURRENT_PROJECT_VERSION')]:
+    match = re.search(r'^    ' + setting + r': "([^"]+)"$', project, re.MULTILINE)
+    if not match or info.get(key) != match.group(1):
+        sys.exit(f'Built {key} does not match project {setting}')
+print(f"Device metadata verified: {info['CFBundleShortVersionString']} build {info['CFBundleVersion']}")
 PY
 stage=$(mktemp -d "$PWD/build/ipa-stage.XXXXXX")
 trap 'rm -rf "$stage"' EXIT
