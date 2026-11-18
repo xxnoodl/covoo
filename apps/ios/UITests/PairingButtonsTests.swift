@@ -7,7 +7,9 @@ final class PairingButtonsTests: XCTestCase {
         if toggle.value as? String != expected {
             // SwiftUI exposes the labeled row as the switch element. Target
             // its trailing control instead of the center of the label.
-            toggle.coordinate(withNormalizedOffset: CGVector(dx: 0.95, dy: 0.5)).tap()
+            let control = toggle.descendants(matching: .switch).firstMatch
+            XCTAssertTrue(control.exists, "Remember row has no switch control")
+            control.tap()
         }
         let changed = NSPredicate(format: "value == %@", expected)
         let result = XCTWaiter.wait(for: [XCTNSPredicateExpectation(predicate: changed, object: toggle)], timeout: 5)
