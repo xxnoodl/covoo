@@ -73,6 +73,28 @@ static void exercise(int32 sampleSize, double rate) {
     { CallbackGuard guard; processor->process(data); }
     require(bus.silenceFlags == 3, "offline return replayed voice");
 
+    // Repeated device/processing cycles must invalidate the earlier take and
+    // permit fresh audio without relying on MIDI or recreating the processor.
+    for (int cycle = 0; cycle < 3; ++cycle) {
+        { CallbackGuard guard; processor->setProcessing(false); }
+        require(!source.publish(input.data(), 1024), "stopped processor accepted PCM");
+        require(processor->setActive(false) == kResultOk, "deactivation failed");
+        require(processor->setupProcessing(setup) == kResultOk, "restart setup failed");
+        require(processor->setActive(true) == kResultOk, "reactivation failed");
+        { CallbackGuard guard; processor->setProcessing(true); }
+        data.numSamples = 256;
+        { CallbackGuard guard; processor->process(data); }
+        require(bus.silenceFlags == 3, "restart replayed earlier PCM");
+        require(source.connect(rate), "restart feeder connection failed");
+        require(source.publish(input.data(), 1024), "restart feeder publication failed");
+        { CallbackGuard guard; processor->process(data); }
+        require(bus.silenceFlags == 0, "restart remained silent");
+        for (int32 i = 0; i < data.numSamples; ++i) {
+            require((sampleSize == kSample32 ? fLeft[i] : dLeft[i]) == input[i],
+                "restart PCM mismatch");
+        }
+    }
+
     MemoryStream state;
     require(processor->getState(&state) == kResultOk, "state save failed");
     require(state.getSize() == 3, "empty receiver state contains unexpected data");

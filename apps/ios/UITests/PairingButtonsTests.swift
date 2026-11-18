@@ -16,10 +16,10 @@ final class PairingButtonsTests: XCTestCase {
         app.terminate()
     }
     @MainActor
-    func testRememberAndForgetAreIndependentListActions() {
+    func testRememberTogglePersistsAndRemovalKeepsCurrentLink() {
         let app = XCUIApplication()
         app.launch()
-        let remember = app.buttons["pairing.remember"]
+        let remember = app.switches["pairing.remember"]
         let forget = app.buttons["pairing.forget"]
         XCTAssertTrue(remember.waitForExistence(timeout: 10))
         XCTAssertTrue(forget.exists)
@@ -37,14 +37,23 @@ final class PairingButtonsTests: XCTestCase {
         field.tap()
         field.typeText(link + "\n")
         remember.tap()
+        XCTAssertEqual(remember.value as? String, "1")
         // If tapping Remember also fires Forget, nothing survives app restart.
         app.terminate()
         app.launch()
+        let restored = app.switches["pairing.remember"]
+        XCTAssertTrue(restored.waitForExistence(timeout: 10))
+        XCTAssertEqual(restored.value as? String, "1")
         let status = app.staticTexts["receiver.status"]
         for _ in 0..<4 where !status.exists { app.swipeUp() }
         XCTAssertTrue(status.waitForExistence(timeout: 5))
         XCTAssertTrue(status.label.hasPrefix("Saved pairing loaded."), status.label)
         app.swipeDown()
+        restored.tap()
+        XCTAssertEqual(restored.value as? String, "0")
+        XCTAssertFalse((app.secureTextFields["pairing.link"].value as? String ?? "").isEmpty)
+        restored.tap()
+        XCTAssertEqual(restored.value as? String, "1")
         app.buttons["pairing.forget"].tap()
         app.terminate()
         app.launch()

@@ -1,5 +1,18 @@
 # VST3 stalled-host recovery
 
+## November 18 lifecycle investigation
+
+Extended the actual processor regression with three deactivate/setup/reactivate
+cycles at 44.1/48/96 kHz in both sample formats. Stopped publication is rejected,
+restart emits silence before fresh input, and fresh input resumes with exact PCM.
+The synthetic lifecycle sequence passes; it does not reproduce the reported
+zero-clock Live startup failure. No production fix or physical acceptance is
+claimed. Existing cold-start and host-state collection tests remain in todo.md.
+
+Local verification passed: Rust format, Clippy with warnings denied, all 49
+workspace tests and locked debug build; VST validator 47/47, source core and
+actual processor tests. No remote CI or hardware checks were performed.
+
 ## Observed physical behavior
 
 November 14: user reported no Live meter activity, including with transport

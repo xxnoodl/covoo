@@ -57,3 +57,18 @@ These observations do not accept the broader audio milestones.
 
 References: [Apple borderless button style](https://developer.apple.com/documentation/swiftui/borderlessbuttonstyle),
 [XcodeGen UI test targets](https://github.com/yonaskolb/XcodeGen/blob/master/Docs/ProjectSpec.md).
+# November 18 saved-state toggle
+
+Source implemented, macOS/simulator/device acceptance pending. Remember receiver
+is now a toggle comparing the current link with the link successfully loaded
+from or saved to Keychain. Editing/scanning another link changes its displayed
+state without automatically persisting or connecting. Turning it off deletes
+the saved pairing but retains the current link and connection; Forget still
+clears the link and disconnects. Save/delete errors have a separate visible
+message, so asynchronous network status cannot hide them. Failed operations
+retain the last known saved state; an initial Keychain read failure is shown.
+
+The UI regression now checks toggle state after save/relaunch and off/on removal
+without clearing the current link. It has not been run on this Windows machine.
+Required Rust format, Clippy, 49 workspace tests and locked build passed locally;
+these checks do not validate Swift. No new IPA, remote CI or physical pass.

@@ -8,6 +8,9 @@ final class CaptureModel: ObservableObject {
     @Published var requesting = false
     @Published var streamState = StreamState()
     @Published var pairingLink = ""
+    @Published private(set) var savedPairingLink: String?
+    @Published private(set) var pairingSaveError: String?
+    var receiverRemembered: Bool { !pairingLink.isEmpty && savedPairingLink == pairingLink }
     @Published var packetProtection = true
     @Published var keepRecordingOnPhone = false
     @Published var lowLatency = false
@@ -23,10 +26,14 @@ final class CaptureModel: ObservableObject {
     init() {
         do {
             if let saved = try pairingStore.load() {
+                savedPairingLink = saved
                 pairingLink = saved
                 streamState.status = "Saved pairing loaded. Tap Connect. If the receiver address changed or pairing was revoked, scan again."
             }
-        } catch { streamState.status = error.localizedDescription }
+        } catch {
+            pairingSaveError = error.localizedDescription
+            streamState.status = error.localizedDescription
+        }
         observe(AVAudioSession.interruptionNotification, message: "Audio interrupted. Start again when ready.")
         observe(AVAudioSession.mediaServicesWereLostNotification, message: "Audio service lost. Start again when ready.")
         observe(AVAudioSession.mediaServicesWereResetNotification, message: "Audio service reset. Start again when ready.")
@@ -174,18 +181,33 @@ final class CaptureModel: ObservableObject {
         guard !state.recording, !requesting else { return }
         do {
             try pairingStore.save(pairingLink)
+            savedPairingLink = pairingLink
+            pairingSaveError = nil
             streamState.status = "Pairing remembered on this phone. Connect still checks the pinned certificate."
-        } catch { streamState.status = error.localizedDescription }
+        } catch { pairingSaveError = error.localizedDescription }
+    }
+
+    func setReceiverRemembered(_ remember: Bool) {
+        guard !state.recording, !requesting else { return }
+        if remember { rememberReceiver(); return }
+        do {
+            try pairingStore.forget()
+            savedPairingLink = nil
+            pairingSaveError = nil
+            streamState.status = "Pairing no longer saved. Current connection is unchanged."
+        } catch { pairingSaveError = error.localizedDescription }
     }
 
     func forgetReceiver() {
         guard !state.recording, !requesting else { return }
         do {
             try pairingStore.forget()
+            savedPairingLink = nil
+            pairingSaveError = nil
             disconnectReceiver()
             pairingLink = ""
             streamState.status = "Pairing forgotten on this phone. To revoke all phones, use Revoke saved pairing on Windows."
-        } catch { streamState.status = error.localizedDescription }
+        } catch { pairingSaveError = error.localizedDescription }
     }
 
     deinit {

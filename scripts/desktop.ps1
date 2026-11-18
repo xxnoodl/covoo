@@ -127,6 +127,16 @@ $latency.Add_Click({
 $recordings = New-Button 'Open recordings'
 $recordings.Add_Click({
     try {
+        $directory = if ($script:runDirectory -and (Test-Path -LiteralPath $script:runDirectory -PathType Container)) {
+            $script:runDirectory
+        } else { Join-Path $root 'recordings' }
+        [IO.Directory]::CreateDirectory($directory) | Out-Null
+        [Diagnostics.Process]::Start('explorer.exe', (Quote-Argument $directory)) | Out-Null
+    } catch { Show-Message $_.Exception.Message }
+})
+$allRecordings = New-Button 'All recordings'
+$allRecordings.Add_Click({
+    try {
         $directory = Join-Path $root 'recordings'
         [IO.Directory]::CreateDirectory($directory) | Out-Null
         [Diagnostics.Process]::Start('explorer.exe', (Quote-Argument $directory)) | Out-Null

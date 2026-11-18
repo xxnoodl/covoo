@@ -64,3 +64,15 @@ control with navigation restricted to its pairing page. Optional per-user deskto
 installation is now implemented in the package update. No native capture driver,
 per-phone revocation or automatic address migration is provided.
 Windows Forms smoke is local evidence, not interactive device acceptance.
+# November 18 recordings access
+
+Implemented in the desktop script: Open recordings uses the current/last run
+folder for this window if it still exists, falling back to the recordings
+parent before a run or after folder removal. All recordings always opens the
+parent. It does not infer a latest session from timestamps across other windows.
+The VST editor already targets its own receiver run directory.
+
+PowerShell parser validation and required Rust formatting, Clippy, all 49
+workspace tests and locked build passed locally. Explorer interaction and
+desktop layout remain unverified; batched UI checks are in todo.md. No package,
+installation, remote CI or hardware acceptance is claimed.

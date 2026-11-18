@@ -26,11 +26,16 @@ struct PhoneMicApp: App {
                             .textInputAutocapitalization(.never)
                             .autocorrectionDisabled()
                             .disabled(capture.state.recording || capture.requesting)
-                        Text("Scan the QR here, then tap Remember receiver and Connect.").font(.caption)
-                        Button("Remember receiver") { capture.rememberReceiver() }
-                            .buttonStyle(.borderless)
+                        Text("Scan the QR here, optionally remember the receiver, then tap Connect.").font(.caption)
+                        Toggle("Remember receiver", isOn: Binding(
+                            get: { capture.receiverRemembered },
+                            set: { capture.setReceiverRemembered($0) }))
                             .accessibilityIdentifier("pairing.remember")
                             .disabled(capture.state.recording || capture.requesting)
+                        if let error = capture.pairingSaveError {
+                            Text(error).font(.caption)
+                                .accessibilityIdentifier("pairing.saveError")
+                        }
                         Button("Forget receiver", role: .destructive) { capture.forgetReceiver() }
                             .buttonStyle(.borderless)
                             .accessibilityIdentifier("pairing.forget")

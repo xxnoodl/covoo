@@ -480,6 +480,26 @@ impl Server {
                         live.overruns.load(Ordering::Relaxed).to_string(),
                     ),
                     (
+                        "Discarded source frames",
+                        live.discarded.load(Ordering::Relaxed).to_string(),
+                    ),
+                    (
+                        "Startup silence frames",
+                        live.startup_silence_frames
+                            .load(Ordering::Relaxed)
+                            .to_string(),
+                    ),
+                    (
+                        "Recovery unavailable output frames",
+                        live.recovery_silence_frames
+                            .load(Ordering::Relaxed)
+                            .to_string(),
+                    ),
+                    (
+                        "Output callbacks observed",
+                        format!("{callbacks}; cumulative, not proof of current progress"),
+                    ),
+                    (
                         "Output errors",
                         live.errors.load(Ordering::Relaxed).to_string(),
                     ),

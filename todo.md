@@ -6,6 +6,11 @@ acceptance gates still apply before dependent work or milestone sign-off.
 
 ## Deferred comparisons
 
+- [ ] Desktop playback diagnostic rows: inspect main endpoint counters during
+  startup, starvation/recovery and a fresh take. Check source/output units and
+  keep VST/dry monitor observations separate. Source implemented November 18;
+  see docs/milestones/desktop-playback-diagnostics.md.
+
 - [ ] M6 actual DAW crash/reopen, repeated lifecycle, sleep/resume and endpoint
   removal remain deferred. Isolated synthetic active-take crash/restart passes;
   this does not establish physical recovery or recover the interrupted WAV.
@@ -293,10 +298,13 @@ acceptance gates still apply before dependent work or milestone sign-off.
   Follow-up: user obtained audio after toggling devices, without identifying the
   cause. Basic audio output is observed; deterministic startup remains unresolved.
 
-- [ ] User-requested iOS pairing UX: replace Remember receiver's tap action with
-  a toggle showing whether the current receiver is saved. The current button
-  gives insufficient feedback. Show the actual persisted state, reflect save/
-  removal failures truthfully and preserve explicit connection/pinning behavior.
+- [x] Implement iOS Remember receiver toggle using the saved Keychain link;
+  save/removal failures stay visible and connection/pinning remain explicit.
+  Source implemented November 18; not yet macOS/device verified.
+- [ ] Remember toggle acceptance: run updated simulator UI test and signed-device
+  checks for relaunch, edited/scanned different links, save/delete failure,
+  locked Keychain and toggling off while connected. Verify removal keeps the
+  current link/connection, while Forget clears/disconnects. See pairing-buttons-update.md.
 
 - [x] Integrated VST3 QR/connection/status view, internal receiver lifetime,
   saved-project profile/port restore, current-recordings link and pairing reset.
@@ -317,10 +325,12 @@ acceptance gates still apply before dependent work or milestone sign-off.
   Local automated verification is recorded in docs/milestones/vst3-desktop-update.md.
   A suitable existing playback driver and physical Live validation remain needed.
   Custom ASIO stays outside authorization. See ADR 0011.
-- [ ] Recordings access, deferred by user: Open recordings currently opens the
-  parent containing opaque per-run folders. Open the current session's recording
-  folder directly. Discuss playback of the current recording or a side-panel
-  playlist later; no playback/browser implementation is requested yet.
+- [x] November 18: desktop Open recordings opens this window's current/last run
+  folder when present; before a run it opens the parent. All recordings opens
+  the parent explicitly. VST editor already opens its own run folder.
+- [ ] Desktop recordings access UI acceptance: before Start, during/after a take,
+  after a second Start and with a deleted run folder; check All recordings and
+  button layout. Playback/playlist remains deferred.
 - [ ] Native WaveRT endpoint, restricted feeder, build-only WDK CI and installer rollback.
 - [ ] Remaining desktop metrics and installation acceptance. Per-user packaging,
   native launcher, CPU/memory observations and isolated setup checks are implemented
